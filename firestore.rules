@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper: Check if user is logged in
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper: Check if user document exists in members subcollection
+    function isMember(restaurantId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid));
+    }
+
+    // Helper: Get user's member role
+    function getRole(restaurantId) {
+      return get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)).data.role;
+    }
+
+    // Helper: Check if user has specific roles
+    function hasRole(restaurantId, roles) {
+      return isMember(restaurantId) && getRole(restaurantId) in roles;
+    }
+
+    // Users Collection
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Restaurants Collection
+    match /restaurants/{restaurantId} {
+      // Anyone can read restaurant info (critical for mobile customer views)
+      allow read: if true;
+      // Any authenticated user can create a restaurant profile
+      allow create: if isSignedIn();
+      // Only owners/admins can update or delete
+      allow update, delete: if hasRole(restaurantId, ['owner', 'admin']);
+
+      // Members Subcollection
+      match /members/{memberUid} {
+        allow read: if isSignedIn() && (request.auth.uid == memberUid || isMember(restaurantId));
+        allow write: if hasRole(restaurantId, ['owner', 'admin']);
+      }
+
+      // Uploads Subcollection
+      match /uploads/{uploadId} {
+        allow read: if true; // Public access for PDFs/Images
+        allow write: if hasRole(restaurantId, ['owner', 'admin', 'editor']);
+      }
+
+      // Menus Subcollection
+      match /menus/{menuId} {
+        allow read: if true; // Customers can view the menu
+        allow write: if hasRole(restaurantId, ['owner', 'admin', 'editor']);
+      }
+    }
+  }
+}

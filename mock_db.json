@@ -1,0 +1,1227 @@
+{
+  "users": {
+    "mock_user_1783270310594": {
+      "uid": "mock_user_1783270310594",
+      "fullName": "blue",
+      "email": "darshanzala369@gmail.com",
+      "photoURL": "",
+      "id": "mock_user_1783270310594",
+      "updatedAt": {
+        "seconds": 1783270311
+      },
+      "createdAt": {
+        "seconds": 1783270311
+      }
+    },
+    "mock_user_1783271298325": {
+      "uid": "mock_user_1783271298325",
+      "fullName": "blue",
+      "email": "dasnadas0369@gmail.com",
+      "photoURL": "",
+      "id": "mock_user_1783271298325",
+      "updatedAt": {
+        "seconds": 1783271298
+      },
+      "createdAt": {
+        "seconds": 1783271298
+      }
+    }
+  },
+  "restaurants": {
+    "TzgzDI1vVJQ6i4VZaAN5": {
+      "id": "TzgzDI1vVJQ6i4VZaAN5",
+      "name": "blue",
+      "slug": "blue",
+      "logoUrl": "",
+      "cuisine": "Cafe",
+      "currency": "INR",
+      "phone": "8591042385",
+      "whatsapp": "8591042385",
+      "address": "39,360 , Patel chowk Road , ghatkopar , mumbai 400075",
+      "ownerId": "mock_user_1783270310594",
+      "status": "active",
+      "createdAt": {
+        "seconds": 1783270356
+      },
+      "updatedAt": {
+        "seconds": 1783271150
+      },
+      "activeMenuId": "menu_1783270596168_330"
+    },
+    "NSRykzMP3WM3KhhKw1ig": {
+      "id": "NSRykzMP3WM3KhhKw1ig",
+      "name": "blue",
+      "slug": "blue",
+      "logoUrl": "",
+      "cuisine": "cafe",
+      "currency": "INR",
+      "phone": "9999999999",
+      "whatsapp": "9999999999",
+      "address": "",
+      "ownerId": "mock_user_1783271298325",
+      "status": "active",
+      "createdAt": {
+        "seconds": 1783271332
+      },
+      "updatedAt": {
+        "seconds": 1783273143
+      },
+      "activeMenuId": "menu_1783272576033_875"
+    }
+  },
+  "members": {
+    "TzgzDI1vVJQ6i4VZaAN5_mock_user_1783270310594": {
+      "uid": "mock_user_1783270310594",
+      "role": "owner",
+      "invitedAt": {
+        "seconds": 1783270356
+      },
+      "joinedAt": {
+        "seconds": 1783270356
+      }
+    },
+    "NSRykzMP3WM3KhhKw1ig_mock_user_1783271298325": {
+      "uid": "mock_user_1783271298325",
+      "role": "owner",
+      "invitedAt": {
+        "seconds": 1783271332
+      },
+      "joinedAt": {
+        "seconds": 1783271332
+      }
+    }
+  },
+  "uploads": {
+    "upload_1783270584471_660": {
+      "fileUrl": "blob:http://localhost:3000/3dc71e2f-3b16-4a6a-808f-30e77899ea09",
+      "storagePath": "restaurants/TzgzDI1vVJQ6i4VZaAN5/uploads/upload_1783270584444.webp",
+      "fileType": "image/webp",
+      "originalFileName": "5c09658e-0bb2-4971-a383-d9f80c2bcb8f.webp",
+      "restaurantId": "TzgzDI1vVJQ6i4VZaAN5",
+      "id": "upload_1783270584471_660",
+      "createdAt": {
+        "seconds": 1783270584
+      },
+      "updatedAt": {
+        "seconds": 1783270584
+      }
+    },
+    "upload_1783270687229_347": {
+      "fileUrl": "blob:http://localhost:3000/7b0f0ae7-9bd7-45db-a6dc-41ae4be2eb0a",
+      "storagePath": "restaurants/TzgzDI1vVJQ6i4VZaAN5/uploads/upload_1783270687216.webp",
+      "fileType": "image/webp",
+      "originalFileName": "5c09658e-0bb2-4971-a383-d9f80c2bcb8f.webp",
+      "restaurantId": "TzgzDI1vVJQ6i4VZaAN5",
+      "id": "upload_1783270687229_347",
+      "createdAt": {
+        "seconds": 1783270687
+      },
+      "updatedAt": {
+        "seconds": 1783270687
+      }
+    },
+    "upload_1783271064339_922": {
+      "fileUrl": "blob:http://localhost:3000/a7c9d802-392e-4042-93bc-607c86f78bdc",
+      "storagePath": "restaurants/TzgzDI1vVJQ6i4VZaAN5/uploads/upload_1783271064315.webp",
+      "fileType": "image/webp",
+      "originalFileName": "5c09658e-0bb2-4971-a383-d9f80c2bcb8f.webp",
+      "restaurantId": "TzgzDI1vVJQ6i4VZaAN5",
+      "id": "upload_1783271064339_922",
+      "createdAt": {
+        "seconds": 1783271064
+      },
+      "updatedAt": {
+        "seconds": 1783271064
+      }
+    },
+    "upload_1783271345438_287": {
+      "fileUrl": "blob:http://localhost:3000/ef999e7d-6ed5-43a8-818f-ecdb169ecc80",
+      "storagePath": "restaurants/NSRykzMP3WM3KhhKw1ig/uploads/upload_1783271345418.webp",
+      "fileType": "image/webp",
+      "originalFileName": "5c09658e-0bb2-4971-a383-d9f80c2bcb8f.webp",
+      "restaurantId": "NSRykzMP3WM3KhhKw1ig",
+      "id": "upload_1783271345438_287",
+      "createdAt": {
+        "seconds": 1783271345
+      },
+      "updatedAt": {
+        "seconds": 1783271345
+      }
+    },
+    "upload_1783272563411_48": {
+      "fileUrl": "blob:http://localhost:3000/99a4ee8a-2862-4d61-9ee8-a6f2eac43de0",
+      "storagePath": "restaurants/NSRykzMP3WM3KhhKw1ig/uploads/upload_1783272563312.png",
+      "fileType": "image/png",
+      "originalFileName": "images.png",
+      "restaurantId": "NSRykzMP3WM3KhhKw1ig",
+      "id": "upload_1783272563411_48",
+      "createdAt": {
+        "seconds": 1783272563
+      },
+      "updatedAt": {
+        "seconds": 1783272563
+      }
+    }
+  },
+  "menus": {
+    "menu_1783270365766_354": {
+      "name": "Default Menu",
+      "restaurantId": "TzgzDI1vVJQ6i4VZaAN5",
+      "status": "published",
+      "version": 1,
+      "categories": [],
+      "theme": {
+        "name": "Nordic Minimalist (Sleek)",
+        "theme": "minimal",
+        "primaryColor": "#18181b",
+        "secondaryColor": "#71717a",
+        "backgroundColor": "#ffffff",
+        "textColor": "#09090b",
+        "fontFamily": "Outfit",
+        "cardStyle": "elevated"
+      },
+      "id": "menu_1783270365766_354",
+      "createdAt": {
+        "seconds": 1783270365
+      },
+      "updatedAt": {
+        "seconds": 1783271078
+      }
+    },
+    "menu_1783270365788_671": {
+      "name": "Default Menu",
+      "restaurantId": "TzgzDI1vVJQ6i4VZaAN5",
+      "status": "draft",
+      "version": 1,
+      "categories": [],
+      "theme": {
+        "theme": "classic",
+        "primaryColor": "#d97706",
+        "secondaryColor": "#1e293b",
+        "backgroundColor": "#fafaf9",
+        "textColor": "#1c1917",
+        "fontFamily": "Inter",
+        "cardStyle": "3d-tilt"
+      },
+      "id": "menu_1783270365788_671",
+      "createdAt": {
+        "seconds": 1783270365
+      },
+      "updatedAt": {
+        "seconds": 1783270365
+      }
+    },
+    "menu_1783270596168_330": {
+      "name": "AI Extracted Menu",
+      "restaurantId": "TzgzDI1vVJQ6i4VZaAN5",
+      "status": "published",
+      "version": 2,
+      "categories": [
+        {
+          "id": "cat-1",
+          "name": "Starters",
+          "description": "Appetizers to share or enjoy individually.",
+          "items": [
+            {
+              "id": "item-1-1",
+              "name": "Black Truffle French Fries",
+              "description": "Crispy skin-on potatoes tossed in white truffle oil and Grana Padano parmesan.",
+              "price": 9.5,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Best Seller"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-1-2",
+              "name": "Cajun Buffalo Wings",
+              "description": "Spicy fire-grilled chicken wings tossed in Louisiana hot sauce, served with blue cheese celery salad.",
+              "price": 13.99,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Spicy"
+              ],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 2
+            }
+          ]
+        },
+        {
+          "id": "cat-2",
+          "name": "Mains",
+          "description": "Our Chef's handcrafted specialty dishes.",
+          "items": [
+            {
+              "id": "item-2-1",
+              "name": "Classic Neapolitan Margherita",
+              "description": "San Marzano tomatoes, fresh buffalo mozzarella, aromatic basil, and olive oil glaze.",
+              "price": 16.5,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Vegetarian Classic"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-2-2",
+              "name": "Atlantic Salmon Fillet",
+              "description": "Slow-roasted wild salmon with herb butter crust, lemon reduction, and garlic greens.",
+              "price": 26,
+              "allergens": [
+                "fish",
+                "dairy"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            }
+          ]
+        },
+        {
+          "id": "cat-3",
+          "name": "Desserts & Coffee",
+          "description": "Sweet finishes and gourmet coffee selections.",
+          "items": [
+            {
+              "id": "item-3-1",
+              "name": "Warm Molten Lava Cake",
+              "description": "Decadent dark chocolate soufflé cake with liquid chocolate core, served with vanilla bean scoop.",
+              "price": 9.5,
+              "allergens": [
+                "dairy",
+                "gluten",
+                "eggs"
+              ],
+              "tags": [
+                "Sweet Indulgence"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            }
+          ]
+        }
+      ],
+      "theme": {
+        "theme": "classic",
+        "primaryColor": "#d97706",
+        "secondaryColor": "#1e293b",
+        "backgroundColor": "#fafaf9",
+        "textColor": "#1c1917",
+        "fontFamily": "Inter",
+        "cardStyle": "3d-tilt"
+      },
+      "id": "menu_1783270596168_330",
+      "createdAt": {
+        "seconds": 1783270596
+      },
+      "updatedAt": {
+        "seconds": 1783271150
+      }
+    },
+    "menu_1783270694463_746": {
+      "name": "AI Extracted Menu",
+      "restaurantId": "TzgzDI1vVJQ6i4VZaAN5",
+      "status": "draft",
+      "version": 2,
+      "categories": [
+        {
+          "id": "cat-1",
+          "name": "Starters",
+          "description": "Appetizers to share or enjoy individually.",
+          "items": [
+            {
+              "id": "item-1-1",
+              "name": "Black Truffle French Fries",
+              "description": "Crispy skin-on potatoes tossed in white truffle oil and Grana Padano parmesan.",
+              "price": 9.5,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Best Seller"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-1-2",
+              "name": "Cajun Buffalo Wings",
+              "description": "Spicy fire-grilled chicken wings tossed in Louisiana hot sauce, served with blue cheese celery salad.",
+              "price": 13.99,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Spicy"
+              ],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 2
+            },
+            {
+              "id": "item_1783270702201",
+              "name": "mango milkshake",
+              "description": "Dish description",
+              "price": 120,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            }
+          ]
+        },
+        {
+          "id": "cat-2",
+          "name": "Mains",
+          "description": "Our Chef's handcrafted specialty dishes.",
+          "items": [
+            {
+              "id": "item-2-1",
+              "name": "Classic Neapolitan Margherita",
+              "description": "San Marzano tomatoes, fresh buffalo mozzarella, aromatic basil, and olive oil glaze.",
+              "price": 16.5,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Vegetarian Classic"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-2-2",
+              "name": "Atlantic Salmon Fillet",
+              "description": "Slow-roasted wild salmon with herb butter crust, lemon reduction, and garlic greens.",
+              "price": 26,
+              "allergens": [
+                "fish",
+                "dairy"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            }
+          ]
+        },
+        {
+          "id": "cat-3",
+          "name": "Desserts & Coffee",
+          "description": "Sweet finishes and gourmet coffee selections.",
+          "items": [
+            {
+              "id": "item-3-1",
+              "name": "Warm Molten Lava Cake",
+              "description": "Decadent dark chocolate soufflé cake with liquid chocolate core, served with vanilla bean scoop.",
+              "price": 9.5,
+              "allergens": [
+                "dairy",
+                "gluten",
+                "eggs"
+              ],
+              "tags": [
+                "Sweet Indulgence"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            }
+          ]
+        }
+      ],
+      "theme": {
+        "theme": "classic",
+        "primaryColor": "#d97706",
+        "secondaryColor": "#1e293b",
+        "backgroundColor": "#fafaf9",
+        "textColor": "#1c1917",
+        "fontFamily": "Inter",
+        "cardStyle": "3d-tilt"
+      },
+      "id": "menu_1783270694463_746",
+      "createdAt": {
+        "seconds": 1783270694
+      },
+      "updatedAt": {
+        "seconds": 1783270733
+      }
+    },
+    "menu_1783271069818_890": {
+      "name": "AI Extracted Menu",
+      "restaurantId": "TzgzDI1vVJQ6i4VZaAN5",
+      "status": "draft",
+      "version": 2,
+      "categories": [
+        {
+          "id": "cat-1",
+          "name": "Starters",
+          "description": "Appetizers to share or enjoy individually.",
+          "items": [
+            {
+              "id": "item-1-1",
+              "name": "Black Truffle French Fries",
+              "description": "Crispy skin-on potatoes tossed in white truffle oil and Grana Padano parmesan.",
+              "price": 9.5,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Best Seller"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-1-2",
+              "name": "Cajun Buffalo Wings",
+              "description": "Spicy fire-grilled chicken wings tossed in Louisiana hot sauce, served with blue cheese celery salad.",
+              "price": 13.99,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Spicy"
+              ],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 2
+            }
+          ]
+        },
+        {
+          "id": "cat-2",
+          "name": "Mains",
+          "description": "Our Chef's handcrafted specialty dishes.",
+          "items": [
+            {
+              "id": "item-2-1",
+              "name": "Classic Neapolitan Margherita",
+              "description": "San Marzano tomatoes, fresh buffalo mozzarella, aromatic basil, and olive oil glaze.",
+              "price": 16.5,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Vegetarian Classic"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-2-2",
+              "name": "Atlantic Salmon Fillet",
+              "description": "Slow-roasted wild salmon with herb butter crust, lemon reduction, and garlic greens.",
+              "price": 26,
+              "allergens": [
+                "fish",
+                "dairy"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            }
+          ]
+        },
+        {
+          "id": "cat-3",
+          "name": "Desserts & Coffee",
+          "description": "Sweet finishes and gourmet coffee selections.",
+          "items": [
+            {
+              "id": "item-3-1",
+              "name": "Warm Molten Lava Cake",
+              "description": "Decadent dark chocolate soufflé cake with liquid chocolate core, served with vanilla bean scoop.",
+              "price": 9.5,
+              "allergens": [
+                "dairy",
+                "gluten",
+                "eggs"
+              ],
+              "tags": [
+                "Sweet Indulgence"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            }
+          ]
+        }
+      ],
+      "theme": {
+        "theme": "classic",
+        "primaryColor": "#d97706",
+        "secondaryColor": "#1e293b",
+        "backgroundColor": "#fafaf9",
+        "textColor": "#1c1917",
+        "fontFamily": "Inter",
+        "cardStyle": "3d-tilt"
+      },
+      "id": "menu_1783271069818_890",
+      "createdAt": {
+        "seconds": 1783271069
+      },
+      "updatedAt": {
+        "seconds": 1783271073
+      }
+    },
+    "menu_1783271335452_461": {
+      "name": "Default Menu",
+      "restaurantId": "NSRykzMP3WM3KhhKw1ig",
+      "status": "draft",
+      "version": 1,
+      "categories": [],
+      "theme": {
+        "theme": "classic",
+        "primaryColor": "#d97706",
+        "secondaryColor": "#1e293b",
+        "backgroundColor": "#fafaf9",
+        "textColor": "#1c1917",
+        "fontFamily": "Inter",
+        "cardStyle": "3d-tilt"
+      },
+      "id": "menu_1783271335452_461",
+      "createdAt": {
+        "seconds": 1783271335
+      },
+      "updatedAt": {
+        "seconds": 1783272585
+      }
+    },
+    "menu_1783271335480_181": {
+      "name": "Default Menu",
+      "restaurantId": "NSRykzMP3WM3KhhKw1ig",
+      "status": "draft",
+      "version": 1,
+      "categories": [],
+      "theme": {
+        "theme": "classic",
+        "primaryColor": "#d97706",
+        "secondaryColor": "#1e293b",
+        "backgroundColor": "#fafaf9",
+        "textColor": "#1c1917",
+        "fontFamily": "Inter",
+        "cardStyle": "3d-tilt"
+      },
+      "id": "menu_1783271335480_181",
+      "createdAt": {
+        "seconds": 1783271335
+      },
+      "updatedAt": {
+        "seconds": 1783271335
+      }
+    },
+    "menu_1783271353402_564": {
+      "name": "AI Extracted Menu",
+      "restaurantId": "NSRykzMP3WM3KhhKw1ig",
+      "status": "published",
+      "version": 3,
+      "categories": [
+        {
+          "id": "cat-1",
+          "name": "Starters",
+          "description": "Appetizers to share or enjoy individually.",
+          "items": [
+            {
+              "id": "item-1-1",
+              "name": "Black Truffle French Fries",
+              "description": "Crispy skin-on potatoes tossed in white truffle oil and Grana Padano parmesan.",
+              "price": 9.5,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Best Seller"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-1-2",
+              "name": "Cajun Buffalo Wings",
+              "description": "Spicy fire-grilled chicken wings tossed in Louisiana hot sauce, served with blue cheese celery salad.",
+              "price": 13.99,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Spicy"
+              ],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 2
+            }
+          ]
+        },
+        {
+          "id": "cat-2",
+          "name": "Mains",
+          "description": "Our Chef's handcrafted specialty dishes.",
+          "items": [
+            {
+              "id": "item-2-1",
+              "name": "Classic Neapolitan Margherita",
+              "description": "San Marzano tomatoes, fresh buffalo mozzarella, aromatic basil, and olive oil glaze.",
+              "price": 16.5,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Vegetarian Classic"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-2-2",
+              "name": "Atlantic Salmon Fillet",
+              "description": "Slow-roasted wild salmon with herb butter crust, lemon reduction, and garlic greens.",
+              "price": 26,
+              "allergens": [
+                "fish",
+                "dairy"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            }
+          ]
+        },
+        {
+          "id": "cat-3",
+          "name": "Desserts & Coffee",
+          "description": "Sweet finishes and gourmet coffee selections.",
+          "items": [
+            {
+              "id": "item-3-1",
+              "name": "Warm Molten Lava Cake",
+              "description": "Decadent dark chocolate soufflé cake with liquid chocolate core, served with vanilla bean scoop.",
+              "price": 9.5,
+              "allergens": [
+                "dairy",
+                "gluten",
+                "eggs"
+              ],
+              "tags": [
+                "Sweet Indulgence"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            }
+          ]
+        }
+      ],
+      "theme": {
+        "theme": "classic",
+        "primaryColor": "#d97706",
+        "secondaryColor": "#1e293b",
+        "backgroundColor": "#fafaf9",
+        "textColor": "#1c1917",
+        "fontFamily": "Inter",
+        "cardStyle": "3d-tilt"
+      },
+      "id": "menu_1783271353402_564",
+      "createdAt": {
+        "seconds": 1783271353
+      },
+      "updatedAt": {
+        "seconds": 1783272590
+      }
+    },
+    "menu_1783272576033_875": {
+      "name": "AI Extracted Menu",
+      "restaurantId": "NSRykzMP3WM3KhhKw1ig",
+      "status": "published",
+      "version": 2,
+      "categories": [
+        {
+          "id": "cat-waffles",
+          "name": "Waffle Stick",
+          "description": "Crispy, hot waffle sticks loaded with premium chocolates and sweet toppings.",
+          "items": [
+            {
+              "id": "waffle-1",
+              "name": "White Fantasy Waffle",
+              "description": "Fresh hot waffle stick smothered in premium sweet white chocolate sauce and powdered sugar.",
+              "price": 70,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Sweet Tooth"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "waffle-2",
+              "name": "Dark Chocolate Waffle",
+              "description": "Warm waffle stick loaded with rich melted dark Belgian chocolate drizzle.",
+              "price": 70,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Best Seller"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "waffle-3",
+              "name": "Oreo Chocolate Waffle",
+              "description": "Decadent waffle stick topped with crushed Oreo cookies, white chocolate cream, and dark fudge.",
+              "price": 80,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Kids Favorite"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "waffle-4",
+              "name": "Kitkat Waffle",
+              "description": "Golden waffle stick layered with chocolate fudge and heaps of crushed crispy Kitkat chunks.",
+              "price": 80,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Crispy Treat"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "waffle-5",
+              "name": "Naughty Nutella Waffle",
+              "description": "Classic waffle stick generously spread with rich hazelnut Nutella paste and roasted nuts.",
+              "price": 80,
+              "allergens": [
+                "dairy",
+                "gluten",
+                "nuts"
+              ],
+              "tags": [
+                "Staff Pick"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "waffle-6",
+              "name": "Black & White Waffle",
+              "description": "The best of both worlds: half sweet white chocolate and half rich dark chocolate glaze.",
+              "price": 80,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "waffle-7",
+              "name": "Coffee Bite Waffle",
+              "description": "Warm waffle stick infused with mocha espresso fudge and a pinch of roasted coffee dust.",
+              "price": 80,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            }
+          ]
+        },
+        {
+          "id": "cat-1",
+          "name": "Menu and Prices",
+          "description": "Our core selection of gourmet salads, sandwiches, paninis, and mains.",
+          "items": [
+            {
+              "id": "item-1",
+              "name": "Grilled Chicken Caesar Salad",
+              "description": "Crispy romaine lettuce tossed in creamy Caesar dressing, topped with fire-grilled chicken breast, garlic croutons, and shaved parmesan.",
+              "price": 12.99,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Healthy Option"
+              ],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-2",
+              "name": "Classic Club Sandwich",
+              "description": "Triple-decker sandwich layered with warm roasted turkey, crispy bacon, fresh lettuce, sliced tomatoes, and light mayo on toasted sourdough bread.",
+              "price": 10.99,
+              "allergens": [
+                "gluten",
+                "eggs"
+              ],
+              "tags": [
+                "Best Seller"
+              ],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-3",
+              "name": "Spinach and Feta Stuffed Chicken",
+              "description": "Plump chicken breast stuffed with tender spinach and crumbled feta cheese, baked to a golden brown and served with pan juices.",
+              "price": 14.99,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Chef Special"
+              ],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-4",
+              "name": "Vegetable Quinoa Bowl",
+              "description": "Hearty organic quinoa bed loaded with seasoned roasted seasonal vegetables, avocado slices, and zesty lemon tahini glaze.",
+              "price": 11.99,
+              "allergens": [
+                "sesame"
+              ],
+              "tags": [
+                "Vegan Option",
+                "Gluten-Free"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-5",
+              "name": "BBQ Pulled Pork Sandwich",
+              "description": "Slow-roasted tender pulled pork smothered in sweet hickory BBQ sauce, topped with crunchy vinegar coleslaw on toasted brioche bun.",
+              "price": 9.99,
+              "allergens": [
+                "gluten"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 1
+            },
+            {
+              "id": "item-6",
+              "name": "Caprese Panini",
+              "description": "Creamy buffalo mozzarella cheese, vine-ripe sliced tomatoes, sweet basil leaves, and tangy balsamic glaze pressed in warm artisan ciabatta bread.",
+              "price": 8.99,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Vegetarian Classic"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-7",
+              "name": "Fish Tacos",
+              "description": "Three soft corn tortillas loaded with blackened mahi-mahi flakes, pickled cabbage shred, and fresh spicy chipotle crema drizzle.",
+              "price": 13.99,
+              "allergens": [
+                "fish",
+                "dairy"
+              ],
+              "tags": [
+                "Spicy Favorite"
+              ],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 1
+            },
+            {
+              "id": "item-8",
+              "name": "Mushroom and Swiss Burger",
+              "description": "Char-broiled premium beef patty topped with savory sautéed wild mushrooms and melted Swiss cheese slice on toasted sesame seed bun.",
+              "price": 12.99,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-9",
+              "name": "Quiche Lorraine",
+              "description": "Traditional savory French custard tart baked in flaky pastry shell with smoky bacon pieces and imported Gruyère cheese.",
+              "price": 10.99,
+              "allergens": [
+                "dairy",
+                "gluten",
+                "eggs"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-10",
+              "name": "Mediterranean Pasta",
+              "description": "Penne pasta tossed in extra virgin olive oil, sweet cherry tomatoes, sliced kalamata olives, artichoke hearts, and crumbled Greek feta cheese.",
+              "price": 13.99,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Vegetarian"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-11",
+              "name": "Asian Chicken Salad",
+              "description": "Crispy napa cabbage shred, grilled chicken strips, mandarin orange segments, and crunchy wonton skins, tossed in sweet ginger-soy vinaigrette.",
+              "price": 11.99,
+              "allergens": [
+                "soy",
+                "gluten"
+              ],
+              "tags": [],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-12",
+              "name": "Beef Stir-Fry",
+              "description": "Tender flank steak slices stir-fried with red bell peppers, broccoli florets, and snap peas in garlic-soy glaze over jasmine rice.",
+              "price": 15.99,
+              "allergens": [
+                "soy",
+                "gluten"
+              ],
+              "tags": [
+                "Spicy"
+              ],
+              "isAvailable": true,
+              "type": "non-veg",
+              "spiceLevel": 1
+            },
+            {
+              "id": "item-13",
+              "name": "Margherita Pizza",
+              "description": "Classic pizza base with San Marzano tomato spread, fresh buffalo mozzarella slices, sweet basil, and extra virgin olive oil.",
+              "price": 14.99,
+              "allergens": [
+                "dairy",
+                "gluten"
+              ],
+              "tags": [
+                "Vegetarian Classic"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-14",
+              "name": "Roasted Vegetable Wrap",
+              "description": "Grilled zucchini strips, eggplant, roasted bell peppers, and fresh organic chickpea hummus wrapped in a warm spinach tortilla wrap.",
+              "price": 9.99,
+              "allergens": [
+                "gluten",
+                "sesame"
+              ],
+              "tags": [
+                "Vegan Option"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-15",
+              "name": "Soup of the Day",
+              "description": "Freshly prepared rustic house soup. Please ask your server for details on today's scratch recipe selection.",
+              "price": 5.99,
+              "allergens": [],
+              "tags": [
+                "House Favorite"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            }
+          ]
+        },
+        {
+          "id": "cat-2",
+          "name": "Beverages",
+          "description": "Chilled soft drinks, iced brews, fresh juices, and warm beverages.",
+          "items": [
+            {
+              "id": "item-16",
+              "name": "Soft Drinks",
+              "description": "Choice of chilled carbonated drinks: Coca-Cola, Sprite, or Orange Fanta.",
+              "price": 2.99,
+              "allergens": [],
+              "tags": [],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-17",
+              "name": "Iced Tea",
+              "description": "Cold-brewed pure black tea served over ice with fresh lemon wedges.",
+              "price": 2.99,
+              "allergens": [],
+              "tags": [],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-18",
+              "name": "Freshly Squeezed Lemonade",
+              "description": "Home-style freshly squeezed lemon juice, sweet simple syrup, and cold filtered water.",
+              "price": 3.99,
+              "allergens": [],
+              "tags": [],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-19",
+              "name": "Fruit Smoothies",
+              "description": "Blended organic seasonal fresh fruits with greek yogurt and organic honey drop.",
+              "price": 4.99,
+              "allergens": [
+                "dairy"
+              ],
+              "tags": [
+                "Healthy Choice"
+              ],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-20",
+              "name": "Coffee",
+              "description": "Hot drip coffee brewed from premium medium-roast Arabica coffee beans.",
+              "price": 2.99,
+              "allergens": [],
+              "tags": [],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-21",
+              "name": "Hot Tea",
+              "description": "Brewed hot water served with a selection of premium organic herbal and green tea bags.",
+              "price": 2.99,
+              "allergens": [],
+              "tags": [],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            },
+            {
+              "id": "item-22",
+              "name": "Bottled Water",
+              "description": "Chilled mineral spring bottled water.",
+              "price": 1.99,
+              "allergens": [],
+              "tags": [],
+              "isAvailable": true,
+              "type": "veg",
+              "spiceLevel": 0
+            }
+          ]
+        }
+      ],
+      "theme": {
+        "theme": "classic",
+        "primaryColor": "#d97706",
+        "secondaryColor": "#1e293b",
+        "backgroundColor": "#fafaf9",
+        "textColor": "#1c1917",
+        "fontFamily": "Inter",
+        "cardStyle": "3d-tilt"
+      },
+      "id": "menu_1783272576033_875",
+      "createdAt": {
+        "seconds": 1783272576
+      },
+      "updatedAt": {
+        "seconds": 1783273143
+      }
+    }
+  },
+  "qrs": {},
+  "scans": {}
+}
