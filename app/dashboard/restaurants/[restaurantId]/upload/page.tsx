@@ -202,6 +202,24 @@ export default function UploadMenuPage() {
     }
   };
 
+  const handleBypassOcr = () => {
+    const recognizedCorrection = getRecognizedMenuCorrection("Cafe Cornerstone hot drinks cold drinks cappuccino");
+    if (recognizedCorrection) {
+      setRawExtractedText(recognizedCorrection.correctedText);
+      setExtractedData(recognizedCorrection.categories);
+      setStructuredSource("ocr-preview");
+      const itemCount = countMenuItems(recognizedCorrection.categories);
+      setStrictJsonText(JSON.stringify(buildDigitizedJsonFromCategories(recognizedCorrection.categories, recognizedCorrection.confidenceNotes), null, 2));
+      setDigitizedMetadata({
+        totalItemsDetected: itemCount,
+        totalCategoriesDetected: recognizedCorrection.categories.length,
+        confidenceNotes: recognizedCorrection.confidenceNotes
+      });
+      setExtractionNotice("Bypassed OCR. Sample menu data loaded successfully.");
+    }
+    setStatus("done");
+  };
+
   const handleUploadAndExtract = async () => {
     if (!file) return;
     const restId = restaurant.id;
@@ -427,6 +445,12 @@ export default function UploadMenuPage() {
                 <div className="space-y-1">
                   <p className="text-sm font-bold text-amber-500 animate-pulse">Reading Menu Image...</p>
                   <p className="text-zinc-500 text-xs">Reading item names and prices from the uploaded menu.</p>
+                  <button
+                    onClick={handleBypassOcr}
+                    className="mt-4 px-4 py-2 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg border border-zinc-700 cursor-pointer transition-all"
+                  >
+                    Bypass OCR & Load Sample Menu
+                  </button>
                 </div>
               </div>
             )}
