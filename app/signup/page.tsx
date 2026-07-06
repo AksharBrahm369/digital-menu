@@ -21,7 +21,7 @@ export default function SignUp() {
     setLoading(true);
 
     try {
-      // Sign up, create firestore user profile, and sync session cookie
+      // Sign up and sync the Firebase Auth session.
       await signUp(email, password, fullName);
 
       // Direct to dashboard
@@ -36,7 +36,7 @@ export default function SignUp() {
       } else if (err.code === "auth/invalid-email") {
         setError("Please enter a valid email address.");
       } else if (err.message && (err.message.includes("permission") || err.message.includes("Permission"))) {
-        setError("Firestore Database write permission denied. Please verify that your Cloud Firestore Database is created and that you have published the rules from 'firestore.rules' in the Firebase Console Rules tab.");
+        setError("Firebase permission denied. Please check that Cloud Firestore is created and that the latest firestore.rules file is published in Firebase Console.");
       } else {
         setError("Registration failed. " + (err.message || ""));
       }

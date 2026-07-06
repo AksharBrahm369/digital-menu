@@ -28,6 +28,15 @@ const AuthContext = createContext<AuthContextType>({
   signUp: async () => {},
 });
 
+function isPermissionDeniedError(error: unknown) {
+  const err = error as { code?: string; message?: string };
+  return (
+    err.code === "permission-denied" ||
+    err.code === "firestore/permission-denied" ||
+    /permission|insufficient/i.test(err.message || "")
+  );
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -158,7 +167,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(userCredential.user, { displayName: fullName });
-    await createUserProfile(userCredential.user.uid, { fullName, email, photoURL: "" });
+
+    try {
+      await createUserProfile(userCredential.user.uid, { fullName, email, photoURL: "" });
+    } catch (error) {
+      if (!isPermissionDeniedError(error)) {
+        throw error;
+      }
+
+      console.warn("User profile document was not created because Firestore denied the write. Continuing with Firebase Auth user.", error);
+    }
+
+    setUser(userCredential.user);
     return userCredential;
   };
 
