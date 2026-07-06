@@ -357,9 +357,10 @@ export default function UploadMenuPage() {
 
       // 3. Direct user to the builder to see the imported items
       router.push(`/dashboard/restaurants/${restId}/builder?menuId=${menuId}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to import menu items:", err);
-      setErrorMessage("Failed to import items into builder.");
+      setErrorMessage("Failed to import items into builder: " + (err.message || ""));
+      setStatus("error");
     } finally {
       setImporting(false);
     }

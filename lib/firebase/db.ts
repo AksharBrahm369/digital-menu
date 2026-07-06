@@ -705,9 +705,11 @@ export async function saveMenu(restaurantId: string, menuId: string, menuData: P
 
       if (deleteErr) throw deleteErr;
 
+      const isUuid = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
       for (let catIndex = 0; catIndex < menuData.categories.length; catIndex++) {
         const category = menuData.categories[catIndex];
-        const catId = category.id && !category.id.startsWith("cat_") ? category.id : crypto.randomUUID();
+        const catId = category.id && isUuid(category.id) ? category.id : crypto.randomUUID();
 
         const { error: catErr } = await dbClient
           .from("menu_categories")
@@ -724,7 +726,7 @@ export async function saveMenu(restaurantId: string, menuId: string, menuData: P
 
         if (category.items && category.items.length > 0) {
           const itemsPayload = category.items.map((item, itemIndex) => {
-            const itemId = item.id && !item.id.startsWith("item_") ? item.id : crypto.randomUUID();
+            const itemId = item.id && isUuid(item.id) ? item.id : crypto.randomUUID();
             return {
               id: itemId,
               menu_id: menuId,
