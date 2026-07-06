@@ -46,3 +46,8 @@ next-prod.err.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Firebase Service Account secrets
+*-adminsdk-*.json
+menu3d-qr-firebase-adminsdk-fbsvc-*.json
+
