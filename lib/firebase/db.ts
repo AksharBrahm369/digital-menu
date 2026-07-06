@@ -691,7 +691,8 @@ export async function saveMenu(restaurantId: string, menuId: string, menuData: P
 
   const { error: menuErr } = await dbClient
     .from("menus")
-    .upsert(dbMenu);
+    .update(dbMenu)
+    .eq("id", menuId);
 
   if (menuErr) throw menuErr;
 
