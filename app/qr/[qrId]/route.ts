@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase/admin";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
 import path from "path";
@@ -81,6 +81,8 @@ export async function GET(
       destinationUrl.searchParams.set("table", tableName);
       return NextResponse.redirect(destinationUrl);
     }
+
+    const adminDb = getAdminDb();
 
     // 1. Look up the QR Code metadata document from top-level 'qrs' collection
     const qrDocRef = adminDb.collection("qrs").doc(qrId);

@@ -24,6 +24,27 @@ import {
   TrendingUp
 } from "lucide-react";
 
+async function readApiPayload(response: Response) {
+  const text = await response.text();
+  let payload: any = {};
+
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    const textSnippet = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220);
+    throw new Error(
+      payload.error ||
+        `Server returned ${response.status} ${response.statusText || "error"}${textSnippet ? `: ${textSnippet}` : ""}`
+    );
+  }
+
+  return payload;
+}
+
 async function getDashboardRestaurants(user: { uid: string; getIdToken?: () => Promise<string> }) {
   if (!isFirebaseConfigured()) {
     return getRestaurants(user.uid);
@@ -34,11 +55,7 @@ async function getDashboardRestaurants(user: { uid: string; getIdToken?: () => P
     cache: "no-store",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(payload.error || "Could not load restaurants.");
-  }
+  const payload = await readApiPayload(response);
 
   return (payload.data || []) as Restaurant[];
 }
@@ -66,8 +83,12 @@ export default function Dashboard() {
       } catch (err: any) {
         console.error("Error fetching restaurants:", err);
         const message = err.message || "";
-        if (message.toLowerCase().includes("firebase admin")) {
+        if (message.toLowerCase().includes("firebase admin") || message.toLowerCase().includes("firestore client")) {
           setError("Vercel is missing Firebase Admin environment variables. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY, then redeploy.");
+        } else if (message.toLowerCase().includes("private_key") || message.toLowerCase().includes("private key")) {
+          setError("FIREBASE_PRIVATE_KEY is not formatted correctly in Vercel. Use the full private_key from your Firebase service account JSON with \\n newline escapes.");
+        } else if (message.toLowerCase().includes("firebase_project_id") || message.toLowerCase().includes("firebase_client_email")) {
+          setError("Vercel is missing Firebase Admin environment variables: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.");
         } else if (message.toLowerCase().includes("mock database")) {
           setError("This deployment is still using the local mock database. Vercel cannot persist that data, so configure Firebase and set NEXT_PUBLIC_MOCK_DATABASE=false.");
         } else if (message.toLowerCase().includes("permission")) {

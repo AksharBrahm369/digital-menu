@@ -14,7 +14,7 @@ import {
   increment,
   writeBatch
 } from "firebase/firestore";
-import { db, isMockDatabaseEnabled } from "./config";
+import { auth, db, isFirebaseConfigured, isMockDatabaseEnabled } from "./config";
 
 // --- TypeScript Interfaces ---
 
@@ -224,6 +224,53 @@ const fetchMock = async (action: string, collectionName: string, id?: string, da
   return parseMockResponse(res);
 };
 
+async function parseApiResponse(res: Response) {
+  const text = await res.text();
+  let payload: any = {};
+
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = {};
+  }
+
+  if (!res.ok) {
+    const textSnippet = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220);
+    throw new Error(
+      payload.error ||
+        `Server returned ${res.status} ${res.statusText || "error"}${textSnippet ? `: ${textSnippet}` : ""}`
+    );
+  }
+
+  return payload;
+}
+
+async function dashboardDataRequest<T>(action: string, data: Record<string, any> = {}): Promise<T> {
+  if (typeof window === "undefined") {
+    throw new Error("Dashboard data API is only available in the browser.");
+  }
+
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) {
+    throw new Error("You are not signed in. Please sign in again.");
+  }
+
+  const response = await fetch("/api/dashboard-data", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ action, ...data }),
+  });
+  const payload = await parseApiResponse(response);
+  return payload.data as T;
+}
+
+function shouldUseDashboardApi() {
+  return typeof window !== "undefined" && isFirebaseConfigured();
+}
+
 async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?: string) {
   const baseSlug = normalizeSlug(desiredSlug);
   let candidate = baseSlug;
@@ -379,6 +426,10 @@ export async function addUpload(restaurantId: string, uploadData: Omit<MenuUploa
     return res.data;
   }
 
+  if (shouldUseDashboardApi()) {
+    return dashboardDataRequest<MenuUpload & { id: string }>("addUpload", { restaurantId, uploadData });
+  }
+
   const collRef = collection(db, "restaurants", restaurantId, "uploads");
   const docRef = await addDoc(collRef, {
     ...uploadData,
@@ -392,6 +443,10 @@ export async function getUploads(restaurantId: string): Promise<MenuUpload[]> {
   if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOCS", "uploads", undefined, undefined, { restaurantId });
     return res.data || [];
+  }
+
+  if (shouldUseDashboardApi()) {
+    return dashboardDataRequest<MenuUpload[]>("getUploads", { restaurantId });
   }
 
   const q = query(collection(db, "restaurants", restaurantId, "uploads"), orderBy("createdAt", "desc"));
@@ -410,6 +465,11 @@ export async function updateUploadStatus(
     return;
   }
 
+  if (shouldUseDashboardApi()) {
+    await dashboardDataRequest("updateUploadStatus", { restaurantId, uploadId, status, extractedJson });
+    return;
+  }
+
   const docRef = doc(db, "restaurants", restaurantId, "uploads", uploadId);
   const updateData: Partial<MenuUpload> = { extractionStatus: status };
   if (extractedJson !== undefined) {
@@ -422,6 +482,11 @@ export async function updateUploadStatus(
 export async function saveMenu(restaurantId: string, menuId: string, menuData: Partial<Menu>) {
   if (isMockDatabaseEnabled()) {
     await fetchMock("setDoc", "menus", menuId, { ...menuData, restaurantId });
+    return;
+  }
+
+  if (shouldUseDashboardApi()) {
+    await dashboardDataRequest("saveMenu", { restaurantId, menuId, menuData });
     return;
   }
 
@@ -529,6 +594,11 @@ export async function createMenu(restaurantId: string, name: string) {
     return res.id;
   }
 
+  if (shouldUseDashboardApi()) {
+    const res = await dashboardDataRequest<{ id: string }>("createMenu", { restaurantId, name });
+    return res.id;
+  }
+
   const collRef = collection(db, "restaurants", restaurantId, "menus");
   const docRef = await addDoc(collRef, {
     name,
@@ -548,6 +618,10 @@ export async function getMenus(restaurantId: string): Promise<Menu[]> {
     return res.data || [];
   }
 
+  if (shouldUseDashboardApi()) {
+    return dashboardDataRequest<Menu[]>("getMenus", { restaurantId });
+  }
+
   const q = query(collection(db, "restaurants", restaurantId, "menus"), orderBy("updatedAt", "desc"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Menu));
@@ -559,6 +633,10 @@ export async function getMenu(restaurantId: string, menuId: string): Promise<Men
     return res.data;
   }
 
+  if (shouldUseDashboardApi()) {
+    return dashboardDataRequest<Menu | null>("getMenu", { restaurantId, menuId });
+  }
+
   const docRef = doc(db, "restaurants", restaurantId, "menus", menuId);
   const docSnap = await getDoc(docRef);
   return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as Menu : null;
@@ -567,16 +645,27 @@ export async function getMenu(restaurantId: string, menuId: string): Promise<Men
 export async function getPublishedMenuForRestaurant(restaurant: Restaurant): Promise<Menu | null> {
   if (!restaurant.id) return null;
 
+  const getPublishedMenuById = async (menuId: string) => {
+    if (isMockDatabaseEnabled()) {
+      const res = await fetchMock("GET_DOC", "menus", menuId);
+      const menu = res.data as Menu | null;
+      return menu?.status === "published" ? menu : null;
+    }
+
+    const docRef = doc(db, "restaurants", restaurant.id!, "menus", menuId);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) return null;
+    const menu = { id: docSnap.id, ...docSnap.data() } as Menu;
+    return menu.status === "published" ? menu : null;
+  };
+
   if (restaurant.currentPublishedMenuId) {
-    const currentMenu = await getMenu(restaurant.id, restaurant.currentPublishedMenuId);
-    return currentMenu?.status === "published" ? currentMenu : null;
+    return getPublishedMenuById(restaurant.currentPublishedMenuId);
   }
 
   if (restaurant.activeMenuId) {
-    const activeMenu = await getMenu(restaurant.id, restaurant.activeMenuId);
-    if (activeMenu?.status === "published") {
-      return activeMenu;
-    }
+    const activeMenu = await getPublishedMenuById(restaurant.activeMenuId);
+    if (activeMenu) return activeMenu;
   }
 
   if (isMockDatabaseEnabled()) {
@@ -661,6 +750,11 @@ export async function publishMenu(restaurantId: string, menuId: string) {
     return;
   }
 
+  if (shouldUseDashboardApi()) {
+    await dashboardDataRequest("publishMenu", { restaurantId, menuId });
+    return;
+  }
+
   const menuRef = doc(db, "restaurants", restaurantId, "menus", menuId);
   const restRef = doc(db, "restaurants", restaurantId);
   const restDoc = await getDoc(restRef);
@@ -691,6 +785,10 @@ export async function createQrCode(restaurantId: string, name: string): Promise<
     return res.data;
   }
 
+  if (shouldUseDashboardApi()) {
+    return dashboardDataRequest<QrCode & { id: string }>("createQrCode", { restaurantId, name });
+  }
+
   const collRef = collection(db, "qrs");
   const docRef = await addDoc(collRef, {
     restaurantId,
@@ -707,6 +805,10 @@ export async function getRestaurantQrs(restaurantId: string): Promise<QrCode[]> 
     return res.data || [];
   }
 
+  if (shouldUseDashboardApi()) {
+    return dashboardDataRequest<QrCode[]>("getRestaurantQrs", { restaurantId });
+  }
+
   const q = query(collection(db, "qrs"), where("restaurantId", "==", restaurantId), orderBy("createdAt", "desc"));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as QrCode));
@@ -718,6 +820,10 @@ export async function getQrCode(qrId: string): Promise<QrCode | null> {
     return res.data;
   }
 
+  if (shouldUseDashboardApi()) {
+    return dashboardDataRequest<QrCode | null>("getQrCode", { qrId });
+  }
+
   const docRef = doc(db, "qrs", qrId);
   const docSnap = await getDoc(docRef);
   return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as QrCode : null;
@@ -726,6 +832,11 @@ export async function getQrCode(qrId: string): Promise<QrCode | null> {
 export async function recordQrScan(qrId: string, restaurantId: string, metadata: { userAgent?: string; referer?: string }) {
   if (isMockDatabaseEnabled()) {
     await fetchMock("recordScan", "qrs", qrId, metadata, { restaurantId });
+    return;
+  }
+
+  if (shouldUseDashboardApi()) {
+    await dashboardDataRequest("recordQrScan", { restaurantId, qrId, metadata });
     return;
   }
 
@@ -750,6 +861,10 @@ export async function getScanLogs(restaurantId: string, limitCount = 100): Promi
   if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOCS", "scans", undefined, undefined, { restaurantId });
     return res.data ? res.data.slice(0, limitCount) : [];
+  }
+
+  if (shouldUseDashboardApi()) {
+    return dashboardDataRequest<ScanLog[]>("getScanLogs", { restaurantId, limitCount });
   }
 
   const q = query(collection(db, "restaurants", restaurantId, "scans"), orderBy("timestamp", "desc"));

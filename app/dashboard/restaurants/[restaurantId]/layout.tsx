@@ -31,6 +31,27 @@ const WorkspaceContext = createContext<WorkspaceContextType>({
   refreshRestaurant: async () => {},
 });
 
+async function readApiPayload(response: Response) {
+  const text = await response.text();
+  let payload: any = {};
+
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    const textSnippet = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220);
+    throw new Error(
+      payload.error ||
+        `Server returned ${response.status} ${response.statusText || "error"}${textSnippet ? `: ${textSnippet}` : ""}`
+    );
+  }
+
+  return payload;
+}
+
 async function getWorkspaceRestaurant(
   restaurantId: string,
   user: { getIdToken?: () => Promise<string> }
@@ -44,11 +65,7 @@ async function getWorkspaceRestaurant(
     cache: "no-store",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(payload.error || "Could not load restaurant workspace.");
-  }
+  const payload = await readApiPayload(response);
 
   return payload.data as Restaurant | null;
 }

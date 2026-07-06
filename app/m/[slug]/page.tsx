@@ -34,6 +34,7 @@ import {
   MenuTheme,
   Restaurant
 } from "@/lib/firebase/db";
+import { isFirebaseConfigured } from "@/lib/firebase/config";
 import { hasTrustedStructuredItems } from "@/lib/menu-trust";
 
 type FilterKey = "all" | "veg" | "non-veg" | "egg" | "vegan" | "spicy" | "popular" | "available";
@@ -376,6 +377,62 @@ function PublicMenuContent() {
       setMenu(null);
 
       try {
+        if (isFirebaseConfigured()) {
+          const response = await fetch(`/api/public-menu?slug=${encodeURIComponent(slug)}`, { cache: "no-store" });
+          const payload = await response.json().catch(() => ({}));
+
+          if (response.status === 404) {
+            if (!cancelled) {
+              setRestaurant(null);
+              setErrorType("not-found");
+            }
+            return;
+          }
+
+          if (response.status === 409) {
+            if (!cancelled) {
+              if (payload.restaurant) setRestaurant(payload.restaurant);
+              setErrorType("not-published");
+            }
+            return;
+          }
+
+          if (!response.ok) {
+            throw new Error(payload.error || "Unable to load this menu right now.");
+          }
+
+          const restData = payload.data?.restaurant as Restaurant | null;
+          const publishedMenu = payload.data?.menu as Menu | null;
+          if (!restData || !publishedMenu) {
+            if (!cancelled) setErrorType("not-found");
+            return;
+          }
+
+          if (cancelled) return;
+
+          let finalCategories: CustomerCategory[] = [];
+          if (hasTrustedStructuredItems(publishedMenu)) {
+            const categoriesSnapshot = payload.data?.categoriesSnapshot || [];
+            const itemsSnapshot = payload.data?.itemsSnapshot || [];
+            finalCategories =
+              categoriesSnapshot.length > 0 && itemsSnapshot.length > 0
+                ? normalizeSubcollectionCategories(categoriesSnapshot, itemsSnapshot)
+                : normalizeCategories(publishedMenu);
+
+            if (!hasTrustedStructuredItems({ ...publishedMenu, categories: finalCategories })) {
+              finalCategories = [];
+            }
+          }
+
+          setRestaurant(restData);
+          setMenu(publishedMenu);
+          setActiveTheme(payload.data?.theme || null);
+          setCategories(finalCategories);
+          setSelectedCatId("");
+          setCurrentPage(1);
+          return;
+        }
+
         const restData = await getRestaurantBySlug(slug);
         if (!restData) {
           if (!cancelled) {

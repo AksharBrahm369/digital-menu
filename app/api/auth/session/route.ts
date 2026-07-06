@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { adminAuth } from "@/lib/firebase/admin";
+import { getAdminAuth, getFirebaseAdminConfigProblem } from "@/lib/firebase/admin";
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,12 +12,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "success", message: "Session cleared" });
     }
 
-    // Bypass verification if it's a mock token or server-side keys are missing
+    // Bypass verification only for local mock users.
     const isMockToken = typeof token === "string" && token.startsWith("mock_token_");
-    const hasAdminCredentials = !!process.env.FIREBASE_PRIVATE_KEY && !!process.env.FIREBASE_CLIENT_EMAIL;
 
-    if (isMockToken || !hasAdminCredentials) {
-      const mockUid = isMockToken ? token.replace("mock_token_", "") : "mock_user_123";
+    if (isMockToken) {
+      const mockUid = token.replace("mock_token_", "");
       
       cookieStore.set("session", `mock_session_${mockUid}`, {
         maxAge: 5 * 24 * 60 * 60, // 5 days
@@ -30,7 +29,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "success", uid: mockUid, mock: true });
     }
 
+    const configProblem = getFirebaseAdminConfigProblem();
+    if (configProblem) {
+      return NextResponse.json({ error: configProblem }, { status: 500 });
+    }
+
     // Verify the ID token passed from client
+    const adminAuth = getAdminAuth();
     const decodedToken = await adminAuth.verifyIdToken(token);
 
     // Create session cookie (5 days expiry)

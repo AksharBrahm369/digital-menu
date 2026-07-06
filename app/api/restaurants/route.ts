@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { adminAuth, adminDb } from "@/lib/firebase/admin";
+import { getAdminAuth, getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase/admin";
 import type { Restaurant } from "@/lib/firebase/db";
 
 class ApiError extends Error {
@@ -12,14 +12,6 @@ class ApiError extends Error {
   }
 }
 
-function hasAdminCredentials() {
-  return Boolean(
-    process.env.FIREBASE_PRIVATE_KEY &&
-      process.env.FIREBASE_CLIENT_EMAIL &&
-      (process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID)
-  );
-}
-
 function getBearerToken(request: NextRequest) {
   const header = request.headers.get("authorization") || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -27,11 +19,9 @@ function getBearerToken(request: NextRequest) {
 }
 
 async function requireAuthenticatedUid(request: NextRequest) {
-  if (!hasAdminCredentials()) {
-    throw new ApiError(
-      500,
-      "Firebase Admin is not configured on Vercel. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY environment variables, then redeploy."
-    );
+  const configProblem = getFirebaseAdminConfigProblem();
+  if (configProblem) {
+    throw new ApiError(500, configProblem);
   }
 
   const token = getBearerToken(request);
@@ -40,11 +30,15 @@ async function requireAuthenticatedUid(request: NextRequest) {
   }
 
   try {
-    const decoded = await adminAuth.verifyIdToken(token);
+    const decoded = await getAdminAuth().verifyIdToken(token);
     return decoded.uid;
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown token verification error.";
     console.error("Restaurant API token verification failed:", error);
-    throw new ApiError(401, "Invalid or expired Firebase authentication token. Please sign in again.");
+    throw new ApiError(
+      401,
+      `Firebase token verification failed: ${message}. Make sure NEXT_PUBLIC_FIREBASE_PROJECT_ID and FIREBASE_PROJECT_ID are the same project, then sign out and sign in again.`
+    );
   }
 }
 
@@ -71,6 +65,7 @@ function normalizeSlug(value: string) {
 }
 
 async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?: string) {
+  const adminDb = getAdminDb();
   const baseSlug = normalizeSlug(desiredSlug);
   let candidate = baseSlug;
   let suffix = 2;
@@ -90,13 +85,15 @@ function handleApiError(error: unknown) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
 
+  const message = error instanceof Error ? error.message : "Unknown server error.";
   console.error("Restaurant API error:", error);
-  return NextResponse.json({ error: "Restaurant request failed. Please try again." }, { status: 500 });
+  return NextResponse.json({ error: `Restaurant request failed: ${message}` }, { status: 500 });
 }
 
 export async function GET(request: NextRequest) {
   try {
     const uid = await requireAuthenticatedUid(request);
+    const adminDb = getAdminDb();
     const { searchParams } = new URL(request.url);
     const restaurantId = searchParams.get("id");
 
@@ -125,6 +122,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const uid = await requireAuthenticatedUid(request);
+    const adminDb = getAdminDb();
     const body = await request.json();
     const name = String(body.name || "").trim();
 

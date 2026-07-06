@@ -19,6 +19,27 @@ import {
   AlertTriangle
 } from "lucide-react";
 
+async function readApiPayload(response: Response) {
+  const text = await response.text();
+  let payload: any = {};
+
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    const textSnippet = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220);
+    throw new Error(
+      payload.error ||
+        `Server returned ${response.status} ${response.statusText || "error"}${textSnippet ? `: ${textSnippet}` : ""}`
+    );
+  }
+
+  return payload;
+}
+
 async function createRestaurantViaServer(
   user: { getIdToken?: () => Promise<string> },
   data: Record<string, string>
@@ -32,11 +53,7 @@ async function createRestaurantViaServer(
     },
     body: JSON.stringify(data),
   });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(payload.error || "Could not create restaurant.");
-  }
+  const payload = await readApiPayload(response);
 
   return payload.data;
 }
@@ -97,11 +114,15 @@ export default function NewRestaurant() {
       // 2. Upload Logo File if selected
       if (logoFile) {
         if (isFirebaseConfigured()) {
-          const logoStoragePath = `restaurants/${restaurantId}/logo_${Date.now()}_${logoFile.name}`;
-          const logoRef = ref(storage, logoStoragePath);
-          
-          const uploadResult = await uploadBytes(logoRef, logoFile);
-          logoUrl = await getDownloadURL(uploadResult.ref);
+          try {
+            const logoStoragePath = `restaurants/${restaurantId}/logo_${Date.now()}_${logoFile.name}`;
+            const logoRef = ref(storage, logoStoragePath);
+            
+            const uploadResult = await uploadBytes(logoRef, logoFile);
+            logoUrl = await getDownloadURL(uploadResult.ref);
+          } catch (uploadError) {
+            console.warn("Logo upload failed; continuing without a logo.", uploadError);
+          }
         } else {
           // Bypass Storage upload and use local Object URL
           logoUrl = URL.createObjectURL(logoFile);
@@ -130,8 +151,12 @@ export default function NewRestaurant() {
     } catch (err: any) {
       console.error("Error creating restaurant:", err);
       const message = err.message || "";
-      if (message.toLowerCase().includes("firebase admin")) {
+      if (message.toLowerCase().includes("firebase admin") || message.toLowerCase().includes("firestore client")) {
         setError("Failed to create restaurant. Vercel is missing Firebase Admin environment variables. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY, then redeploy.");
+      } else if (message.toLowerCase().includes("private_key") || message.toLowerCase().includes("private key")) {
+        setError("Failed to create restaurant. FIREBASE_PRIVATE_KEY is not formatted correctly in Vercel. Use the full private_key from your Firebase service account JSON with \\n newline escapes.");
+      } else if (message.toLowerCase().includes("firebase_project_id") || message.toLowerCase().includes("firebase_client_email")) {
+        setError("Failed to create restaurant. Vercel is missing Firebase Admin environment variables: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.");
       } else if (message.toLowerCase().includes("mock database")) {
         setError("Failed to create restaurant. Your Vercel deployment is using the local mock database, which cannot persist data. Set NEXT_PUBLIC_MOCK_DATABASE=false and configure Firebase environment variables in Vercel.");
       } else if (message.toLowerCase().includes("permission")) {
