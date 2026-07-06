@@ -98,10 +98,11 @@ export async function GET(request: NextRequest) {
       }),
     });
   } catch (error) {
+    console.error("[api/public-menu] Public menu API error:", error);
     const message = error instanceof Error ? error.message : "Unknown public menu error.";
-    console.error("Public menu API error:", error);
     const isConfigError =
       message.includes("Missing Firebase Admin env vars") ||
+      message.includes("env vars missing") ||
       message.includes("not configured") ||
       message.includes("initialization failed") ||
       message.includes("could not be parsed") ||
@@ -111,10 +112,22 @@ export async function GET(request: NextRequest) {
 
     if (isConfigError) {
       return NextResponse.json(
-        { error: "Firebase Admin is not configured.", details: message, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
+        {
+          error: "Firebase Admin is not configured",
+          code: "FIREBASE_ADMIN_CONFIG_ERROR",
+          details: message,
+        },
         { status: 500 }
       );
     }
-    return NextResponse.json({ error: "Public menu request failed", details: message, code: "PUBLIC_MENU_ERROR" }, { status: 500 });
+
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        code: "INTERNAL_SERVER_ERROR",
+        details: message,
+      },
+      { status: 500 }
+    );
   }
 }

@@ -24,6 +24,7 @@ export async function GET() {
       getFirebaseAdminApp();
       adminInitOk = true;
     } catch (e: any) {
+      console.error("[api/health/firebase] Firebase Admin initialization failed:", e);
       errorMsg = e.message || "Admin init failed";
     }
 
@@ -33,10 +34,12 @@ export async function GET() {
         await getAdminDb().collection("restaurants").limit(1).get();
         firestorePingOk = true;
       } catch (e: any) {
+        console.error("[api/health/firebase] Firestore connection failed:", e);
         errorMsg = e.message || "Firestore ping failed";
       }
     }
   } catch (globalError: any) {
+    console.error("[api/health/firebase] Global error:", globalError);
     errorMsg = globalError.message || "Global health check error";
   }
 

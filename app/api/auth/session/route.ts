@@ -77,10 +77,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ status: "success", uid: decodedToken.uid });
   } catch (error) {
-    console.error("Authentication session endpoint error:", error);
+    console.error("[api/auth/session] Authentication session endpoint error:", error);
     const details = error instanceof Error ? error.message : "Unknown authentication error.";
     const isConfigError =
       details.includes("Missing Firebase Admin env vars") ||
+      details.includes("env vars missing") ||
       details.includes("not configured") ||
       details.includes("initialization failed") ||
       details.includes("could not be parsed") ||

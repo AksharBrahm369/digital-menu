@@ -177,6 +177,7 @@ function handleApiError(error: unknown) {
   const details = error instanceof Error ? error.message : "Unknown server error.";
   const isConfigError =
     details.includes("Missing Firebase Admin env vars") ||
+    details.includes("env vars missing") ||
     details.includes("not configured") ||
     details.includes("initialization failed") ||
     details.includes("could not be parsed") ||
@@ -185,6 +186,7 @@ function handleApiError(error: unknown) {
     details.includes("Missing FIREBASE_PRIVATE_KEY");
 
   if (isConfigError) {
+    console.error("[api/dashboard-data] Firebase Admin configuration error:", details);
     return NextResponse.json(
       { error: "Firebase Admin is not configured.", details, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
       { status: 500 }
@@ -198,11 +200,11 @@ function handleApiError(error: unknown) {
         : error.status === 403
           ? "FORBIDDEN"
           : "DASHBOARD_DATA_ERROR";
-    console.error("Dashboard data API request failed:", { status: error.status, details: error.message });
+    console.error("[api/dashboard-data] Request failed:", { status: error.status, details: error.message });
     return NextResponse.json({ error: "Dashboard data request failed", details: error.message, code }, { status: error.status });
   }
 
-  console.error("Dashboard data API error:", error);
+  console.error("[api/dashboard-data] Critical error:", error);
   return NextResponse.json({ error: "Dashboard data request failed", details, code: "DASHBOARD_DATA_ERROR" }, { status: 500 });
 }
 
