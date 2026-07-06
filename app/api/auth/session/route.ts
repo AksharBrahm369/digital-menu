@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getAdminAuth, getFirebaseAdminConfigProblem } from "@/lib/firebase-admin";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,24 +50,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "success", uid: mockUid, mock: true });
     }
 
-    const configProblem = getFirebaseAdminConfigProblem();
-    if (configProblem) {
-      console.error("Auth session Firebase Admin configuration error:", configProblem);
+    // Verify the Supabase token passed from client
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: { user }, error: verifyError } = await supabaseAdmin.auth.getUser(token);
+
+    if (verifyError || !user) {
+      console.error("[api/auth/session] Token verification failed:", verifyError);
       return NextResponse.json(
-        { error: "Firebase Admin is not configured.", details: configProblem, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
-        { status: 500 }
+        { error: "Authentication failed", details: verifyError?.message || "Invalid token", code: "AUTH_SESSION_FAILED" },
+        { status: 401 }
       );
     }
 
-    // Verify the ID token passed from client
-    const adminAuth = getAdminAuth();
-    const decodedToken = await adminAuth.verifyIdToken(token);
-
-    // Create session cookie (5 days expiry)
-    const expiresIn = 60 * 60 * 24 * 5 * 1000;
-    const sessionCookie = await adminAuth.createSessionCookie(token, { expiresIn });
-
-    cookieStore.set("session", sessionCookie, {
+    cookieStore.set("session", token, {
       maxAge: 5 * 24 * 60 * 60, // 5 days in seconds
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -75,25 +70,10 @@ export async function POST(request: NextRequest) {
       sameSite: "lax",
     });
 
-    return NextResponse.json({ status: "success", uid: decodedToken.uid });
+    return NextResponse.json({ status: "success", uid: user.id });
   } catch (error) {
     console.error("[api/auth/session] Authentication session endpoint error:", error);
     const details = error instanceof Error ? error.message : "Unknown authentication error.";
-    const isConfigError =
-      details.includes("Missing Firebase Admin env vars") ||
-      details.includes("env vars missing") ||
-      details.includes("not configured") ||
-      details.includes("initialization failed") ||
-      details.includes("could not be parsed") ||
-      details.includes("Missing FIREBASE_PROJECT_ID") ||
-      details.includes("Missing FIREBASE_CLIENT_EMAIL") ||
-      details.includes("Missing FIREBASE_PRIVATE_KEY");
-    if (isConfigError) {
-      return NextResponse.json(
-        { error: "Firebase Admin is not configured.", details, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
-        { status: 500 }
-      );
-    }
     return NextResponse.json({ error: "Authentication failed", details, code: "AUTH_SESSION_FAILED" }, { status: 401 });
   }
 }

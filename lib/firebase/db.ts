@@ -1,20 +1,5 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  addDoc,
-  updateDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  serverTimestamp,
-  increment,
-  writeBatch
-} from "firebase/firestore";
-import { auth, db, isFirebaseConfigured, isMockDatabaseEnabled } from "./config";
+import { supabase, getSupabaseAdmin } from "@/lib/supabase";
+import { auth, isFirebaseConfigured, isMockDatabaseEnabled } from "./config";
 
 // --- TypeScript Interfaces ---
 
@@ -170,6 +155,7 @@ const timestampToMillis = (value: any) => {
   if (typeof value.toMillis === "function") return value.toMillis();
   if (typeof value.seconds === "number") return value.seconds * 1000;
   if (value instanceof Date) return value.getTime();
+  if (typeof value === "string") return new Date(value).getTime();
   return 0;
 };
 
@@ -185,10 +171,6 @@ const sortRestaurantsByUpdatedDate = (restaurants: Restaurant[]) => {
   return [...restaurants].sort((a, b) => timestampToMillis(b.updatedAt) - timestampToMillis(a.updatedAt));
 };
 
-const isPublicRestaurantStatus = (status?: Restaurant["status"]) => {
-  return status === "active" || status === "published";
-};
-
 const parseMockResponse = async (res: Response) => {
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -199,7 +181,6 @@ const parseMockResponse = async (res: Response) => {
 
 const fetchMock = async (action: string, collectionName: string, id?: string, data?: any, extra: Record<string, any> = {}) => {
   if (typeof window === "undefined") {
-    // Return empty on SSR if fetch is not available in mock mode
     return { data: id ? null : [] };
   }
   
@@ -255,7 +236,9 @@ async function dashboardDataRequest<T>(action: string, data: Record<string, any>
     throw new Error("Dashboard data API is only available in the browser.");
   }
 
-  const token = await auth.currentUser?.getIdToken();
+  // Get session token
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
   if (!token) {
     throw new Error("You are not signed in. Please sign in again.");
   }
@@ -276,6 +259,13 @@ function shouldUseDashboardApi() {
   return typeof window !== "undefined" && isFirebaseConfigured();
 }
 
+function getDbClient() {
+  if (typeof window === "undefined") {
+    return getSupabaseAdmin();
+  }
+  return supabase;
+}
+
 async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?: string) {
   const baseSlug = normalizeSlug(desiredSlug);
   let candidate = baseSlug;
@@ -288,12 +278,16 @@ async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?
       const res = await fetchMock("GET_DOCS", "restaurants", undefined, undefined, { slug: candidate });
       matches = res.data || [];
     } else {
-      const slugQuery = query(collection(db, "restaurants"), where("slug", "==", candidate), limit(10));
-      const querySnapshot = await getDocs(slugQuery);
-      matches = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Restaurant));
+      const dbClient = getDbClient();
+      const { data, error } = await dbClient
+        .from("restaurants")
+        .select("id, slug")
+        .eq("slug", candidate)
+        .limit(10);
+      matches = (data || []).map((r: any) => ({ id: r.id, slug: r.slug } as Restaurant));
     }
 
-    const hasConflict = matches.some(rest => rest.id !== currentRestaurantId);
+    const hasConflict = matches.some((rest: any) => rest.id !== currentRestaurantId);
     if (!hasConflict) return candidate;
 
     candidate = `${baseSlug}-${suffix}`;
@@ -301,7 +295,7 @@ async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?
   }
 }
 
-// --- Firestore CRUD Operations with Local Mock Fallback ---
+// --- Supabase Database CRUD Operations ---
 
 // User Profile
 export async function createUserProfile(uid: string, data: Partial<UserProfile>) {
@@ -310,17 +304,30 @@ export async function createUserProfile(uid: string, data: Partial<UserProfile>)
     return res.data;
   }
 
-  const userRef = doc(db, "users", uid);
-  const profile = {
+  const dbClient = getDbClient();
+  const profilePayload = {
     uid,
-    fullName: data.fullName || "",
+    full_name: data.fullName || "",
     email: data.email || "",
-    photoURL: data.photoURL || "",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    photo_url: data.photoURL || "",
+    updated_at: new Date().toISOString()
   };
-  await setDoc(userRef, profile);
-  return profile;
+
+  const { data: inserted, error } = await dbClient
+    .from("profiles")
+    .upsert(profilePayload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return {
+    uid: inserted.uid,
+    fullName: inserted.full_name,
+    email: inserted.email,
+    photoURL: inserted.photo_url || "",
+    createdAt: inserted.created_at,
+    updatedAt: inserted.updated_at
+  };
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
@@ -329,8 +336,24 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     return res.data;
   }
 
-  const userDoc = await getDoc(doc(db, "users", uid));
-  return userDoc.exists() ? (userDoc.data() as UserProfile) : null;
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("profiles")
+    .select("*")
+    .eq("uid", uid)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    uid: data.uid,
+    fullName: data.full_name,
+    email: data.email,
+    photoURL: data.photo_url || "",
+    createdAt: data.created_at,
+    updatedAt: data.updated_at
+  };
 }
 
 // Restaurants
@@ -342,33 +365,56 @@ export async function createRestaurant(ownerId: string, data: Omit<Restaurant, "
     return res.data;
   }
 
-  const restaurantsColl = collection(db, "restaurants");
-  const restDocRef = data.id ? doc(db, "restaurants", data.id) : doc(restaurantsColl);
-  const restaurantId = restDocRef.id;
-  
-  const restaurantData: Restaurant = {
-    ...data,
+  const dbClient = getDbClient();
+  const restaurantPayload = {
+    id: data.id || undefined,
+    owner_id: ownerId,
+    name: data.name,
     slug: uniqueSlug,
-    ownerId,
+    logo_url: data.logoUrl || null,
+    cuisine: data.cuisine || null,
+    currency: data.currency || "USD",
+    phone: data.phone || null,
+    whatsapp: data.whatsapp || null,
+    address: data.address || null,
     status: "active",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    updated_at: new Date().toISOString()
   };
 
-  const memberRef = doc(db, "restaurants", restaurantId, "members", ownerId);
-  const memberData: RestaurantMember = {
-    uid: ownerId,
-    role: "owner",
-    invitedAt: serverTimestamp(),
-    joinedAt: serverTimestamp(),
-  };
+  const { data: rest, error } = await dbClient
+    .from("restaurants")
+    .insert(restaurantPayload)
+    .select()
+    .single();
 
-  const batch = writeBatch(db);
-  batch.set(restDocRef, restaurantData);
-  batch.set(memberRef, memberData);
-  
-  await batch.commit();
-  return { id: restaurantId, ...restaurantData };
+  if (error) throw error;
+
+  // Add membership record for the owner
+  const { error: memberError } = await dbClient
+    .from("restaurant_members")
+    .insert({
+      restaurant_id: rest.id,
+      uid: ownerId,
+      role: "owner"
+    });
+
+  if (memberError) throw memberError;
+
+  return {
+    id: rest.id,
+    ownerId: rest.owner_id,
+    name: rest.name,
+    slug: rest.slug,
+    logoUrl: rest.logo_url || "",
+    cuisine: rest.cuisine || "",
+    currency: rest.currency,
+    phone: rest.phone || "",
+    whatsapp: rest.whatsapp || "",
+    address: rest.address || "",
+    status: rest.status as any,
+    createdAt: rest.created_at,
+    updatedAt: rest.updated_at
+  };
 }
 
 export async function getRestaurant(restaurantId: string): Promise<Restaurant | null> {
@@ -377,8 +423,33 @@ export async function getRestaurant(restaurantId: string): Promise<Restaurant | 
     return res.data;
   }
 
-  const restDoc = await getDoc(doc(db, "restaurants", restaurantId));
-  return restDoc.exists() ? { id: restDoc.id, ...restDoc.data() } as Restaurant : null;
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("restaurants")
+    .select("*")
+    .eq("id", restaurantId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    ownerId: data.owner_id,
+    name: data.name,
+    slug: data.slug,
+    logoUrl: data.logo_url || "",
+    cuisine: data.cuisine || "",
+    currency: data.currency,
+    phone: data.phone || "",
+    whatsapp: data.whatsapp || "",
+    address: data.address || "",
+    status: data.status as any,
+    activeMenuId: data.active_menu_id || undefined,
+    currentPublishedMenuId: data.current_published_menu_id || undefined,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at
+  };
 }
 
 export async function getRestaurants(ownerId: string): Promise<Restaurant[]> {
@@ -387,10 +458,33 @@ export async function getRestaurants(ownerId: string): Promise<Restaurant[]> {
     return sortRestaurantsByUpdatedDate((res.data || []) as Restaurant[]);
   }
 
-  const q = query(collection(db, "restaurants"), where("ownerId", "==", ownerId));
-  const querySnapshot = await getDocs(q);
-  const restaurants = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Restaurant));
-  return sortRestaurantsByUpdatedDate(restaurants);
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("restaurants")
+    .select("*")
+    .eq("owner_id", ownerId);
+
+  if (error) throw error;
+
+  const mapped = (data || []).map((r: any) => ({
+    id: r.id,
+    ownerId: r.owner_id,
+    name: r.name,
+    slug: r.slug,
+    logoUrl: r.logo_url || "",
+    cuisine: r.cuisine || "",
+    currency: r.currency,
+    phone: r.phone || "",
+    whatsapp: r.whatsapp || "",
+    address: r.address || "",
+    status: r.status as any,
+    activeMenuId: r.active_menu_id || undefined,
+    currentPublishedMenuId: r.current_published_menu_id || undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
+
+  return sortRestaurantsByUpdatedDate(mapped);
 }
 
 export async function getRestaurantBySlug(slug: string): Promise<Restaurant | null> {
@@ -400,11 +494,33 @@ export async function getRestaurantBySlug(slug: string): Promise<Restaurant | nu
     return restaurants[0] || null;
   }
 
-  const q = query(collection(db, "restaurants"), where("slug", "==", slug), limit(1));
-  const querySnapshot = await getDocs(q);
-  if (querySnapshot.empty) return null;
-  const docSnap = querySnapshot.docs[0];
-  return { id: docSnap.id, ...docSnap.data() } as Restaurant;
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("restaurants")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    ownerId: data.owner_id,
+    name: data.name,
+    slug: data.slug,
+    logoUrl: data.logo_url || "",
+    cuisine: data.cuisine || "",
+    currency: data.currency,
+    phone: data.phone || "",
+    whatsapp: data.whatsapp || "",
+    address: data.address || "",
+    status: data.status as any,
+    activeMenuId: data.active_menu_id || undefined,
+    currentPublishedMenuId: data.current_published_menu_id || undefined,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at
+  };
 }
 
 export async function updateRestaurant(restaurantId: string, data: Partial<Restaurant>) {
@@ -413,14 +529,30 @@ export async function updateRestaurant(restaurantId: string, data: Partial<Resta
     return;
   }
 
-  const docRef = doc(db, "restaurants", restaurantId);
-  await updateDoc(docRef, {
-    ...data,
-    updatedAt: serverTimestamp()
-  });
+  const dbClient = getDbClient();
+  const dbPayload: any = {};
+  if (data.name !== undefined) dbPayload.name = data.name;
+  if (data.slug !== undefined) dbPayload.slug = data.slug;
+  if (data.logoUrl !== undefined) dbPayload.logo_url = data.logoUrl;
+  if (data.cuisine !== undefined) dbPayload.cuisine = data.cuisine;
+  if (data.currency !== undefined) dbPayload.currency = data.currency;
+  if (data.phone !== undefined) dbPayload.phone = data.phone;
+  if (data.whatsapp !== undefined) dbPayload.whatsapp = data.whatsapp;
+  if (data.address !== undefined) dbPayload.address = data.address;
+  if (data.status !== undefined) dbPayload.status = data.status;
+  if (data.activeMenuId !== undefined) dbPayload.active_menu_id = data.activeMenuId;
+  if (data.currentPublishedMenuId !== undefined) dbPayload.current_published_menu_id = data.currentPublishedMenuId;
+  dbPayload.updated_at = new Date().toISOString();
+
+  const { error } = await dbClient
+    .from("restaurants")
+    .update(dbPayload)
+    .eq("id", restaurantId);
+
+  if (error) throw error;
 }
 
-// Uploads (Menu PDF/Image Upload Logs)
+// Uploads
 export async function addUpload(restaurantId: string, uploadData: Omit<MenuUpload, "createdAt" | "extractionStatus">) {
   if (isMockDatabaseEnabled()) {
     const res = await fetchMock("addDoc", "uploads", undefined, {
@@ -435,13 +567,31 @@ export async function addUpload(restaurantId: string, uploadData: Omit<MenuUploa
     return dashboardDataRequest<MenuUpload & { id: string }>("addUpload", { restaurantId, uploadData });
   }
 
-  const collRef = collection(db, "restaurants", restaurantId, "uploads");
-  const docRef = await addDoc(collRef, {
-    ...uploadData,
-    extractionStatus: "pending",
-    createdAt: serverTimestamp(),
-  });
-  return { id: docRef.id, ...uploadData };
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("menu_uploads")
+    .insert({
+      restaurant_id: restaurantId,
+      file_url: uploadData.fileUrl,
+      storage_path: uploadData.storagePath,
+      file_type: uploadData.fileType,
+      original_file_name: uploadData.originalFileName,
+      extraction_status: "pending"
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return {
+    id: data.id,
+    fileUrl: data.file_url,
+    storagePath: data.storage_path,
+    fileType: data.file_type,
+    originalFileName: data.original_file_name,
+    extractionStatus: data.extraction_status as any,
+    createdAt: data.created_at
+  };
 }
 
 export async function getUploads(restaurantId: string): Promise<MenuUpload[]> {
@@ -454,9 +604,25 @@ export async function getUploads(restaurantId: string): Promise<MenuUpload[]> {
     return dashboardDataRequest<MenuUpload[]>("getUploads", { restaurantId });
   }
 
-  const q = query(collection(db, "restaurants", restaurantId, "uploads"), orderBy("createdAt", "desc"));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MenuUpload));
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("menu_uploads")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).map((u: any) => ({
+    id: u.id,
+    fileUrl: u.file_url,
+    storagePath: u.storage_path,
+    fileType: u.file_type,
+    originalFileName: u.original_file_name,
+    extractionStatus: u.extraction_status as any,
+    extractedJson: u.extracted_json || undefined,
+    createdAt: u.created_at
+  }));
 }
 
 export async function updateUploadStatus(
@@ -475,12 +641,18 @@ export async function updateUploadStatus(
     return;
   }
 
-  const docRef = doc(db, "restaurants", restaurantId, "uploads", uploadId);
-  const updateData: Partial<MenuUpload> = { extractionStatus: status };
+  const dbClient = getDbClient();
+  const payload: any = { extraction_status: status };
   if (extractedJson !== undefined) {
-    updateData.extractedJson = extractedJson;
+    payload.extracted_json = extractedJson;
   }
-  await updateDoc(docRef, updateData);
+
+  const { error } = await dbClient
+    .from("menu_uploads")
+    .update(payload)
+    .eq("id", uploadId);
+
+  if (error) throw error;
 }
 
 // Menus
@@ -495,83 +667,100 @@ export async function saveMenu(restaurantId: string, menuId: string, menuData: P
     return;
   }
 
-  const docRef = doc(db, "restaurants", restaurantId, "menus", menuId);
-  await setDoc(docRef, {
-    ...menuData,
-    updatedAt: serverTimestamp()
-  }, { merge: true });
+  const dbClient = getDbClient();
 
-  // Sync categories and items to Firestore subcollections if updated
+  const dbMenu: any = {
+    id: menuId,
+    restaurant_id: restaurantId,
+    updated_at: new Date().toISOString()
+  };
+
+  if (menuData.name !== undefined) dbMenu.name = menuData.name;
+  if (menuData.status !== undefined) dbMenu.status = menuData.status;
+  if (menuData.version !== undefined) dbMenu.version = menuData.version;
+  if (menuData.theme !== undefined) dbMenu.theme = menuData.theme;
+  if (menuData.sourceFileUrl !== undefined) dbMenu.source_file_url = menuData.sourceFileUrl;
+  if (menuData.sourceFileType !== undefined) dbMenu.source_file_type = menuData.sourceFileType;
+  if (menuData.sourceFileName !== undefined) dbMenu.source_file_name = menuData.sourceFileName;
+  if (menuData.sourceUploadId !== undefined) dbMenu.source_upload_id = menuData.sourceUploadId;
+  if (menuData.rawExtractedText !== undefined) dbMenu.raw_extracted_text = menuData.rawExtractedText;
+  if (menuData.rawDigitizedJson !== undefined) dbMenu.raw_digitized_json = menuData.rawDigitizedJson;
+  if (menuData.structuredItemsVerified !== undefined) dbMenu.structured_items_verified = menuData.structuredItemsVerified;
+  if (menuData.digitizationMetadata !== undefined) dbMenu.digitization_metadata = menuData.digitizationMetadata;
+  if (menuData.publishedAt !== undefined) dbMenu.published_at = menuData.publishedAt;
+
+  const { error: menuErr } = await dbClient
+    .from("menus")
+    .upsert(dbMenu);
+
+  if (menuErr) throw menuErr;
+
+  // Sync Categories & Items
   if (menuData.categories) {
     try {
-      const categoriesColl = collection(db, "restaurants", restaurantId, "menus", menuId, "categories");
-      const itemsColl = collection(db, "restaurants", restaurantId, "menus", menuId, "items");
+      const { error: deleteErr } = await dbClient
+        .from("menu_categories")
+        .delete()
+        .eq("menu_id", menuId);
 
-      // Fetch existing documents to clean them up first
-      const [categoriesSnapshot, itemsSnapshot] = await Promise.all([
-        getDocs(categoriesColl),
-        getDocs(itemsColl)
-      ]);
+      if (deleteErr) throw deleteErr;
 
-      const batch = writeBatch(db);
+      for (let catIndex = 0; catIndex < menuData.categories.length; catIndex++) {
+        const category = menuData.categories[catIndex];
+        const catId = category.id && !category.id.startsWith("cat_") ? category.id : crypto.randomUUID();
 
-      // Add delete operations
-      categoriesSnapshot.docs.forEach(docSnap => {
-        batch.delete(docSnap.ref);
-      });
-      itemsSnapshot.docs.forEach(docSnap => {
-        batch.delete(docSnap.ref);
-      });
+        const { error: catErr } = await dbClient
+          .from("menu_categories")
+          .insert({
+            id: catId,
+            menu_id: menuId,
+            name: category.name || "",
+            description: category.description || null,
+            sort_order: category.sortOrder ?? catIndex,
+            is_active: category.isActive !== false
+          });
 
-      // Add write operations for updated categories and items
-      menuData.categories.forEach((category, catIndex) => {
-        const catId = category.id || `cat_${catIndex}`;
-        const catDocRef = doc(categoriesColl, catId);
-        
-        batch.set(catDocRef, {
-          name: category.name || "",
-          description: category.description || "",
-          sortOrder: category.sortOrder ?? catIndex,
-          isActive: category.isActive !== false
-        });
+        if (catErr) throw catErr;
 
-        if (category.items) {
-          category.items.forEach((item, itemIndex) => {
-            const itemId = item.id || `item_${catIndex}_${itemIndex}`;
-            const itemDocRef = doc(itemsColl, itemId);
-            
-            batch.set(itemDocRef, {
-              categoryId: catId,
+        if (category.items && category.items.length > 0) {
+          const itemsPayload = category.items.map((item, itemIndex) => {
+            const itemId = item.id && !item.id.startsWith("item_") ? item.id : crypto.randomUUID();
+            return {
+              id: itemId,
+              menu_id: menuId,
+              category_id: catId,
               name: item.name || "",
-              description: item.description || "",
+              description: item.description || null,
               price: Number(item.price) || 0,
-              priceLabel: item.priceLabel || "",
-              priceOptions: item.priceOptions || [],
+              price_label: item.priceLabel || null,
+              price_options: item.priceOptions || [],
               variants: item.variants || [],
               confidence: item.confidence || "high",
               subcategory: item.subcategory || null,
-              dietaryTag: item.dietaryTag || null,
-              specialTag: item.specialTag || null,
+              dietary_tag: item.dietaryTag || null,
+              special_tag: item.specialTag || null,
               type: item.type || item.dietaryTag || "unknown",
-              imageUrl: item.imageUrl || item.image || "",
-              isAvailable: item.isAvailable !== false,
-              isVeg: item.type === "veg" || item.type === "vegan" || item.dietaryTag === "veg" || item.dietaryTag === "vegan",
-              isFeatured: item.isFeatured || item.isPopular || false,
-              isPopular: item.isPopular || false,
-              spiceLevel: item.spiceLevel ?? null,
+              image_url: item.imageUrl || item.image || null,
+              is_available: item.isAvailable !== false,
+              is_veg: item.type === "veg" || item.type === "vegan" || item.dietaryTag === "veg" || item.dietaryTag === "vegan",
+              is_featured: item.isFeatured || item.isPopular || false,
+              is_popular: item.isPopular || false,
+              spice_level: item.spiceLevel ?? null,
               allergens: item.allergens || [],
               tags: item.tags || [],
-              sortOrder: item.sortOrder ?? itemIndex,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            });
+              sort_order: item.sortOrder ?? itemIndex
+            };
           });
-        }
-      });
 
-      await batch.commit();
+          const { error: itemsErr } = await dbClient
+            .from("menu_items")
+            .insert(itemsPayload);
+
+          if (itemsErr) throw itemsErr;
+        }
+      }
     } catch (err) {
-      console.error("Error syncing menu subcollections:", err);
+      console.error("Error syncing menu categories and items table:", err);
     }
   }
 }
@@ -604,17 +793,21 @@ export async function createMenu(restaurantId: string, name: string) {
     return res.id;
   }
 
-  const collRef = collection(db, "restaurants", restaurantId, "menus");
-  const docRef = await addDoc(collRef, {
-    name,
-    status: "draft",
-    version: 1,
-    categories: [],
-    theme: defaultTheme,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return docRef.id;
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("menus")
+    .insert({
+      restaurant_id: restaurantId,
+      name,
+      status: "draft",
+      version: 1,
+      theme: defaultTheme
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  return data.id;
 }
 
 export async function getMenus(restaurantId: string): Promise<Menu[]> {
@@ -627,9 +820,25 @@ export async function getMenus(restaurantId: string): Promise<Menu[]> {
     return dashboardDataRequest<Menu[]>("getMenus", { restaurantId });
   }
 
-  const q = query(collection(db, "restaurants", restaurantId, "menus"), orderBy("updatedAt", "desc"));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Menu));
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("menus")
+    .select("id, name, status, version, theme, created_at, updated_at")
+    .eq("restaurant_id", restaurantId)
+    .order("updated_at", { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).map((m: any) => ({
+    id: m.id,
+    name: m.name,
+    status: m.status as any,
+    version: m.version,
+    categories: [],
+    theme: m.theme,
+    createdAt: m.created_at,
+    updatedAt: m.updated_at
+  }));
 }
 
 export async function getMenu(restaurantId: string, menuId: string): Promise<Menu | null> {
@@ -642,9 +851,90 @@ export async function getMenu(restaurantId: string, menuId: string): Promise<Men
     return dashboardDataRequest<Menu | null>("getMenu", { restaurantId, menuId });
   }
 
-  const docRef = doc(db, "restaurants", restaurantId, "menus", menuId);
-  const docSnap = await getDoc(docRef);
-  return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as Menu : null;
+  const dbClient = getDbClient();
+  
+  const { data: menu, error } = await dbClient
+    .from("menus")
+    .select("*")
+    .eq("id", menuId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!menu) return null;
+
+  const { data: dbCategories, error: catErr } = await dbClient
+    .from("menu_categories")
+    .select("*")
+    .eq("menu_id", menuId)
+    .order("sort_order", { ascending: true });
+  if (catErr) throw catErr;
+
+  const { data: dbItems, error: itemsErr } = await dbClient
+    .from("menu_items")
+    .select("*")
+    .eq("menu_id", menuId)
+    .order("sort_order", { ascending: true });
+  if (itemsErr) throw itemsErr;
+
+  const itemsByCat: Record<string, MenuItem[]> = {};
+  (dbItems || []).forEach((item: any) => {
+    if (!itemsByCat[item.category_id]) {
+      itemsByCat[item.category_id] = [];
+    }
+    itemsByCat[item.category_id].push({
+      id: item.id,
+      name: item.name,
+      description: item.description || "",
+      price: Number(item.price),
+      priceLabel: item.price_label || undefined,
+      priceOptions: item.price_options || [],
+      variants: item.variants || [],
+      confidence: item.confidence as any,
+      subcategory: item.subcategory,
+      dietaryTag: item.dietary_tag as any,
+      specialTag: item.special_tag,
+      imageUrl: item.image_url || undefined,
+      image: item.image_url || undefined,
+      allergens: item.allergens || [],
+      tags: item.tags || [],
+      isAvailable: item.is_available,
+      isActive: item.is_available,
+      isFeatured: item.is_featured,
+      isPopular: item.is_popular,
+      type: item.type as any,
+      spiceLevel: item.spice_level,
+      sortOrder: item.sort_order
+    });
+  });
+
+  const categories: MenuCategory[] = (dbCategories || []).map((cat: any) => ({
+    id: cat.id,
+    name: cat.name,
+    description: cat.description || undefined,
+    sortOrder: cat.sort_order,
+    isActive: cat.is_active,
+    items: itemsByCat[cat.id] || []
+  }));
+
+  return {
+    id: menu.id,
+    name: menu.name,
+    status: menu.status as any,
+    version: menu.version,
+    categories,
+    theme: menu.theme,
+    sourceFileUrl: menu.source_file_url || undefined,
+    sourceFileType: menu.source_file_type || undefined,
+    sourceFileName: menu.source_file_name || undefined,
+    sourceUploadId: menu.source_upload_id || undefined,
+    rawExtractedText: menu.raw_extracted_text || undefined,
+    rawDigitizedJson: menu.raw_digitized_json || undefined,
+    structuredItemsVerified: menu.structured_items_verified,
+    digitizationMetadata: menu.digitization_metadata || undefined,
+    publishedAt: menu.published_at,
+    createdAt: menu.created_at,
+    updatedAt: menu.updated_at
+  };
 }
 
 export async function getPublishedMenuForRestaurant(restaurant: Restaurant): Promise<Menu | null> {
@@ -656,12 +946,7 @@ export async function getPublishedMenuForRestaurant(restaurant: Restaurant): Pro
       const menu = res.data as Menu | null;
       return menu?.status === "published" ? menu : null;
     }
-
-    const docRef = doc(db, "restaurants", restaurant.id!, "menus", menuId);
-    const docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) return null;
-    const menu = { id: docSnap.id, ...docSnap.data() } as Menu;
-    return menu.status === "published" ? menu : null;
+    return getMenu(restaurant.id!, menuId);
   };
 
   if (restaurant.currentPublishedMenuId) {
@@ -679,59 +964,58 @@ export async function getPublishedMenuForRestaurant(restaurant: Restaurant): Pro
     return sortMenusByPublishDate(publishedMenus)[0] || null;
   }
 
-  const publishedQuery = query(
-    collection(db, "restaurants", restaurant.id, "menus"),
-    where("status", "==", "published"),
-    limit(25)
-  );
-  const querySnapshot = await getDocs(publishedQuery);
-  const publishedMenus = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Menu));
-  return sortMenusByPublishDate(publishedMenus)[0] || null;
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("menus")
+    .select("id")
+    .eq("restaurant_id", restaurant.id)
+    .eq("status", "published")
+    .limit(25);
+
+  if (error || !data || data.length === 0) return null;
+
+  const menus = await Promise.all(data.map((m: any) => getMenu(restaurant.id!, m.id)));
+  const validMenus = menus.filter((m: any): m is Menu => m !== null);
+  return sortMenusByPublishDate(validMenus)[0] || null;
 }
 
 export async function getMenuCategoriesSubcollection(restaurantId: string, menuId: string): Promise<any[]> {
-  if (isMockDatabaseEnabled()) {
-    return [];
-  }
-  try {
-    const collRef = collection(db, "restaurants", restaurantId, "menus", menuId, "categories");
-    const querySnapshot = await getDocs(collRef);
-    return querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-  } catch (err) {
-    console.error("Error fetching categories subcollection:", err);
-    return [];
-  }
+  if (isMockDatabaseEnabled()) return [];
+  const dbClient = getDbClient();
+  const { data } = await dbClient
+    .from("menu_categories")
+    .select("*")
+    .eq("menu_id", menuId);
+  return data || [];
 }
 
 export async function getMenuItemsSubcollection(restaurantId: string, menuId: string): Promise<any[]> {
-  if (isMockDatabaseEnabled()) {
-    return [];
-  }
-  try {
-    const collRef = collection(db, "restaurants", restaurantId, "menus", menuId, "items");
-    const querySnapshot = await getDocs(collRef);
-    return querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-  } catch (err) {
-    console.error("Error fetching items subcollection:", err);
-    return [];
-  }
+  if (isMockDatabaseEnabled()) return [];
+  const dbClient = getDbClient();
+  const { data } = await dbClient
+    .from("menu_items")
+    .select("*")
+    .eq("menu_id", menuId);
+  return (data || []).map((item: any) => ({
+    ...item,
+    categoryId: item.category_id,
+    imageUrl: item.image_url,
+    isAvailable: item.is_available,
+    isFeatured: item.is_featured,
+    isPopular: item.is_popular
+  }));
 }
 
 export async function getActiveThemeForRestaurant(restaurantId: string): Promise<MenuTheme | null> {
-  if (isMockDatabaseEnabled()) {
-    return null;
-  }
-  try {
-    const themesColl = collection(db, "restaurants", restaurantId, "themes");
-    const q = query(themesColl, where("isActive", "==", true), limit(1));
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      return querySnapshot.docs[0].data() as MenuTheme;
-    }
-  } catch (err) {
-    console.error("Error fetching active theme:", err);
-  }
-  return null;
+  if (isMockDatabaseEnabled()) return null;
+  
+  // We store menu themes directly inside the published menu. 
+  // Let's fetch the restaurant and grab its current published menu theme.
+  const restaurant = await getRestaurant(restaurantId);
+  if (!restaurant || !restaurant.currentPublishedMenuId) return null;
+  
+  const menu = await getMenu(restaurantId, restaurant.currentPublishedMenuId);
+  return menu ? menu.theme : null;
 }
 
 export async function publishMenu(restaurantId: string, menuId: string) {
@@ -760,30 +1044,43 @@ export async function publishMenu(restaurantId: string, menuId: string) {
     return;
   }
 
-  const menuRef = doc(db, "restaurants", restaurantId, "menus", menuId);
-  const restRef = doc(db, "restaurants", restaurantId);
-  const restDoc = await getDoc(restRef);
-  const restData = restDoc.exists() ? ({ id: restDoc.id, ...restDoc.data() } as Restaurant) : null;
-  const uniqueSlug = restData ? await getUniqueRestaurantSlug(restData.slug || restData.name, restaurantId) : undefined;
+  const dbClient = getDbClient();
+  
+  const { data: rest, error: restErr } = await dbClient
+    .from("restaurants")
+    .select("*")
+    .eq("id", restaurantId)
+    .single();
 
-  const batch = writeBatch(db);
-  batch.update(menuRef, {
-    status: "published",
-    publishedAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
-  batch.update(restRef, {
-    ...(uniqueSlug ? { slug: uniqueSlug } : {}),
-    status: "published",
-    activeMenuId: menuId,
-    currentPublishedMenuId: menuId,
-    updatedAt: serverTimestamp()
-  });
+  if (restErr) throw restErr;
+  const uniqueSlug = await getUniqueRestaurantSlug(rest.slug || rest.name, restaurantId);
 
-  await batch.commit();
+  const { error: menuErr } = await dbClient
+    .from("menus")
+    .update({
+      status: "published",
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", menuId);
+
+  if (menuErr) throw menuErr;
+
+  const { error: restUpdateErr } = await dbClient
+    .from("restaurants")
+    .update({
+      slug: uniqueSlug,
+      status: "published",
+      active_menu_id: menuId,
+      current_published_menu_id: menuId,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", restaurantId);
+
+  if (restUpdateErr) throw restUpdateErr;
 }
 
-// QR Code and Table placard tags
+// QR Code
 export async function createQrCode(restaurantId: string, name: string): Promise<QrCode & { id: string }> {
   if (isMockDatabaseEnabled()) {
     const res = await fetchMock("addDoc", "qrs", undefined, { restaurantId, name, scanCount: 0 });
@@ -794,14 +1091,26 @@ export async function createQrCode(restaurantId: string, name: string): Promise<
     return dashboardDataRequest<QrCode & { id: string }>("createQrCode", { restaurantId, name });
   }
 
-  const collRef = collection(db, "qrs");
-  const docRef = await addDoc(collRef, {
-    restaurantId,
-    name,
-    scanCount: 0,
-    createdAt: serverTimestamp()
-  });
-  return { id: docRef.id, restaurantId, name, scanCount: 0, createdAt: new Date() };
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("qrs")
+    .insert({
+      restaurant_id: restaurantId,
+      name,
+      scan_count: 0
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return {
+    id: data.id,
+    restaurantId: data.restaurant_id,
+    name: data.name,
+    scanCount: data.scan_count,
+    createdAt: data.created_at
+  };
 }
 
 export async function getRestaurantQrs(restaurantId: string): Promise<QrCode[]> {
@@ -814,9 +1123,22 @@ export async function getRestaurantQrs(restaurantId: string): Promise<QrCode[]> 
     return dashboardDataRequest<QrCode[]>("getRestaurantQrs", { restaurantId });
   }
 
-  const q = query(collection(db, "qrs"), where("restaurantId", "==", restaurantId), orderBy("createdAt", "desc"));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as QrCode));
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("qrs")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).map((q: any) => ({
+    id: q.id,
+    restaurantId: q.restaurant_id,
+    name: q.name,
+    scanCount: q.scan_count,
+    createdAt: q.created_at
+  }));
 }
 
 export async function getQrCode(qrId: string): Promise<QrCode | null> {
@@ -829,9 +1151,23 @@ export async function getQrCode(qrId: string): Promise<QrCode | null> {
     return dashboardDataRequest<QrCode | null>("getQrCode", { qrId });
   }
 
-  const docRef = doc(db, "qrs", qrId);
-  const docSnap = await getDoc(docRef);
-  return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as QrCode : null;
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("qrs")
+    .select("*")
+    .eq("id", qrId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    restaurantId: data.restaurant_id,
+    name: data.name,
+    scanCount: data.scan_count,
+    createdAt: data.created_at
+  };
 }
 
 export async function recordQrScan(qrId: string, restaurantId: string, metadata: { userAgent?: string; referer?: string }) {
@@ -845,21 +1181,31 @@ export async function recordQrScan(qrId: string, restaurantId: string, metadata:
     return;
   }
 
-  const qrRef = doc(db, "qrs", qrId);
-  const scanColl = collection(db, "restaurants", restaurantId, "scans");
-  const batch = writeBatch(db);
-  
-  batch.update(qrRef, { scanCount: increment(1) });
+  const dbClient = getDbClient();
 
-  const scanDocRef = doc(scanColl);
-  batch.set(scanDocRef, {
-    qrId,
-    timestamp: serverTimestamp(),
-    userAgent: metadata.userAgent || "Unknown",
-    referer: metadata.referer || "Direct",
-  });
+  // Fetch current scan count
+  const { data: qr, error: qrErr } = await dbClient
+    .from("qrs")
+    .select("scan_count")
+    .eq("id", qrId)
+    .single();
 
-  await batch.commit();
+  if (!qrErr && qr) {
+    await dbClient
+      .from("qrs")
+      .update({ scan_count: qr.scan_count + 1 })
+      .eq("id", qrId);
+  }
+
+  // Insert scan log
+  await dbClient
+    .from("scans")
+    .insert({
+      restaurant_id: restaurantId,
+      qr_id: qrId,
+      user_agent: metadata.userAgent || "Unknown",
+      referer: metadata.referer || "Direct"
+    });
 }
 
 export async function getScanLogs(restaurantId: string, limitCount = 100): Promise<ScanLog[]> {
@@ -872,7 +1218,21 @@ export async function getScanLogs(restaurantId: string, limitCount = 100): Promi
     return dashboardDataRequest<ScanLog[]>("getScanLogs", { restaurantId, limitCount });
   }
 
-  const q = query(collection(db, "restaurants", restaurantId, "scans"), orderBy("timestamp", "desc"));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.slice(0, limitCount).map(doc => ({ id: doc.id, ...doc.data() } as ScanLog));
+  const dbClient = getDbClient();
+  const { data, error } = await dbClient
+    .from("scans")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .order("timestamp", { ascending: false })
+    .limit(limitCount);
+
+  if (error) throw error;
+
+  return (data || []).map((s: any) => ({
+    id: s.id,
+    qrId: s.qr_id,
+    timestamp: s.timestamp,
+    userAgent: s.user_agent || "Unknown",
+    referer: s.referer || "Direct"
+  }));
 }

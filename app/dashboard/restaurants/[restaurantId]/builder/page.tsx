@@ -5,8 +5,8 @@ import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { useWorkspace } from "../layout";
 import { getMenus, getMenu, saveMenu, createMenu, Menu, MenuCategory, MenuItem } from "@/lib/firebase/db";
 import { getStructuredMenuTrustIssues } from "@/lib/menu-trust";
-import { storage, isFirebaseConfigured } from "@/lib/firebase/config";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { isFirebaseConfigured } from "@/lib/firebase/config";
+import { uploadToSupabaseStorage } from "@/lib/supabase";
 import { 
   Plus, 
   Trash2, 
@@ -231,10 +231,7 @@ export default function MenuBuilder() {
       let downloadUrl = "";
       if (isFirebaseConfigured()) {
         const storagePath = `restaurants/${restaurant.id}/items/${selectedItemId}_${Date.now()}_${file.name}`;
-        const imageRef = ref(storage, storagePath);
-        
-        const uploadResult = await uploadBytes(imageRef, file);
-        downloadUrl = await getDownloadURL(uploadResult.ref);
+        downloadUrl = await uploadToSupabaseStorage(storagePath, file);
       } else {
         downloadUrl = await fileToDataUrl(file);
       }

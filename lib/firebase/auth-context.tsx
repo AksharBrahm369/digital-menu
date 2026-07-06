@@ -1,19 +1,11 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import {
-  User, 
-  onIdTokenChanged, 
-  signOut as firebaseSignOut,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile
-} from "firebase/auth";
-import { auth, isFirebaseConfigured, isMockDatabaseEnabled } from "./config";
+import { supabase } from "@/lib/supabase";
 import { createUserProfile } from "./db";
 
 interface AuthContextType {
-  user: User | null;
+  user: any | null;
   loading: boolean;
   signOut: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<any>;
@@ -28,19 +20,47 @@ const AuthContext = createContext<AuthContextType>({
   signUp: async () => {},
 });
 
-function isPermissionDeniedError(error: unknown) {
-  const err = error as { code?: string; message?: string };
-  return (
-    err.code === "permission-denied" ||
-    err.code === "firestore/permission-denied" ||
-    /permission|insufficient/i.test(err.message || "")
+function isMockDatabaseEnabled() {
+  return process.env.NEXT_PUBLIC_MOCK_DATABASE === "true";
+}
+
+function isSupabaseConfigured() {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   );
 }
 
+function mapSupabaseUser(supabaseUser: any) {
+  if (!supabaseUser) return null;
+  return {
+    uid: supabaseUser.id,
+    email: supabaseUser.email,
+    displayName: supabaseUser.user_metadata?.full_name || supabaseUser.email?.split("@")[0] || "",
+    photoURL: supabaseUser.user_metadata?.avatar_url || "",
+    getIdToken: async () => {
+      const { data } = await supabase.auth.getSession();
+      return data.session?.access_token || "";
+    }
+  };
+}
+
+async function syncSessionCookie(token: string | null) {
+  try {
+    await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+  } catch (error) {
+    console.error("Error synchronizing session cookie:", error);
+  }
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const configured = isFirebaseConfigured();
+  const configured = isSupabaseConfigured();
   const mockEnabled = isMockDatabaseEnabled();
 
   // Listen to Auth State
@@ -63,29 +83,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
-
-      try {
-        const token = firebaseUser ? await firebaseUser.getIdToken() : null;
-        await fetch("/api/auth/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-        });
-      } catch (error) {
-        console.error("Error synchronizing session cookie:", error);
+    // Initialize Supabase Auth State
+    supabase.auth.getSession().then(({ data: { session } }: any) => {
+      if (session?.user) {
+        const mapped = mapSupabaseUser(session.user);
+        setUser(mapped as any);
+        syncSessionCookie(session.access_token);
+      } else {
+        setUser(null);
+        syncSessionCookie(null);
       }
+      setLoading(false);
     });
 
-    return () => unsubscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
+      if (session?.user) {
+        const mapped = mapSupabaseUser(session.user);
+        setUser(mapped as any);
+        await syncSessionCookie(session.access_token);
+      } else {
+        setUser(null);
+        await syncSessionCookie(null);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [configured, mockEnabled]);
 
   const signIn = async (email: string, password: string) => {
     if (!configured) {
       if (!mockEnabled) {
-        throw new Error("Firebase is not configured for this deployment. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy.");
+        throw new Error("Supabase is not configured for this deployment. Add the NEXT_PUBLIC_SUPABASE_* environment variables in Vercel and redeploy.");
       }
 
       // Simulate validation
@@ -114,13 +145,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       return { user: mockUser };
     }
 
-    return signInWithEmailAndPassword(auth, email, password);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return { user: mapSupabaseUser(data.user) };
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
     if (!configured) {
       if (!mockEnabled) {
-        throw new Error("Firebase is not configured for this deployment. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy.");
+        throw new Error("Supabase is not configured for this deployment. Add the NEXT_PUBLIC_SUPABASE_* environment variables in Vercel and redeploy.");
       }
 
       if (!email.includes("@") || password.length < 6) {
@@ -165,21 +198,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       return { user: mockUser };
     }
 
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(userCredential.user, { displayName: fullName });
-
-    try {
-      await createUserProfile(userCredential.user.uid, { fullName, email, photoURL: "" });
-    } catch (error) {
-      if (!isPermissionDeniedError(error)) {
-        throw error;
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName
+        }
       }
+    });
+    if (error) throw error;
 
-      console.warn("User profile document was not created because Firestore denied the write. Continuing with Firebase Auth user.", error);
+    if (data.user) {
+      try {
+        await createUserProfile(data.user.id, { fullName, email, photoURL: "" });
+      } catch (profileErr) {
+        console.warn("User profile record could not be created:", profileErr);
+      }
     }
 
-    setUser(userCredential.user);
-    return userCredential;
+    return { user: mapSupabaseUser(data.user) };
   };
 
   const signOut = async () => {
@@ -196,7 +234,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    await firebaseSignOut(auth);
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
   };
 
   return (

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue, getAdminAuth, getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase-admin";
-import type { Restaurant } from "@/lib/firebase/db";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,36 +22,28 @@ function getBearerToken(request: NextRequest) {
 async function requireAuthenticatedUid(request: NextRequest) {
   const token = getBearerToken(request);
   if (!token) {
-    throw new ApiError(401, "Missing Firebase authentication token.");
+    throw new ApiError(401, "Missing authentication token.");
   }
 
-  const configProblem = getFirebaseAdminConfigProblem();
-  if (configProblem) {
-    console.error("Restaurant API Firebase Admin configuration error:", configProblem);
-    throw new ApiError(500, configProblem);
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !user) {
+    console.error("Token verification failed:", error);
+    throw new ApiError(401, `Authentication failed: ${error?.message || "Invalid token"}`);
   }
 
-  try {
-    const decoded = await getAdminAuth().verifyIdToken(token);
-    return decoded.uid;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown token verification error.";
-    console.error("Restaurant API token verification failed:", error);
-    throw new ApiError(
-      401,
-      `Firebase token verification failed: ${message}. Make sure NEXT_PUBLIC_FIREBASE_PROJECT_ID and FIREBASE_PROJECT_ID are the same project, then sign out and sign in again.`
-    );
-  }
+  return user.id;
 }
 
 function timestampToMillis(value: any) {
   if (!value) return 0;
-  if (typeof value.toMillis === "function") return value.toMillis();
-  if (typeof value.seconds === "number") return value.seconds * 1000;
+  if (typeof value === "string") return new Date(value).getTime();
+  if (value instanceof Date) return value.getTime();
   return 0;
 }
 
-function sortRestaurants(restaurants: Restaurant[]) {
+function sortRestaurants(restaurants: any[]) {
   return [...restaurants].sort((a, b) => timestampToMillis(b.updatedAt) - timestampToMillis(a.updatedAt));
 }
 
@@ -68,14 +59,19 @@ function normalizeSlug(value: string) {
 }
 
 async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?: string) {
-  const adminDb = getAdminDb();
+  const supabaseAdmin = getSupabaseAdmin();
   const baseSlug = normalizeSlug(desiredSlug);
   let candidate = baseSlug;
   let suffix = 2;
 
   while (true) {
-    const snapshot = await adminDb.collection("restaurants").where("slug", "==", candidate).limit(10).get();
-    const hasConflict = snapshot.docs.some(docSnap => docSnap.id !== currentRestaurantId);
+    const { data, error } = await supabaseAdmin
+      .from("restaurants")
+      .select("id")
+      .eq("slug", candidate)
+      .limit(10);
+
+    const hasConflict = (data || []).some((rest: any) => rest.id !== currentRestaurantId);
     if (!hasConflict) return candidate;
 
     candidate = `${baseSlug}-${suffix}`;
@@ -86,22 +82,6 @@ async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?
 function handleApiError(error: unknown, publicMessage: string) {
   try {
     const details = error instanceof Error ? error.message : "Unknown server error.";
-    const isConfigError =
-      details.includes("Missing Firebase Admin env vars") ||
-      details.includes("env vars missing") ||
-      details.includes("not configured") ||
-      details.includes("initialization failed") ||
-      details.includes("could not be parsed") ||
-      details.includes("Missing FIREBASE_PROJECT_ID") ||
-      details.includes("Missing FIREBASE_CLIENT_EMAIL") ||
-      details.includes("Missing FIREBASE_PRIVATE_KEY");
-
-    if (isConfigError) {
-      return NextResponse.json(
-        { error: "Firebase Admin is not configured.", details, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
-        { status: 500 }
-      );
-    }
 
     if (error instanceof ApiError) {
       console.error(`${publicMessage}:`, { status: error.status, details });
@@ -139,27 +119,73 @@ function handleApiError(error: unknown, publicMessage: string) {
 export async function GET(request: NextRequest) {
   try {
     const uid = await requireAuthenticatedUid(request);
-    const adminDb = getAdminDb();
+    const supabaseAdmin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const restaurantId = searchParams.get("id");
 
     if (restaurantId) {
-      const docSnap = await adminDb.collection("restaurants").doc(restaurantId).get();
-      if (!docSnap.exists) {
+      const { data: restaurant, error } = await supabaseAdmin
+        .from("restaurants")
+        .select("*")
+        .eq("id", restaurantId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!restaurant) {
         return NextResponse.json({ data: null }, { status: 404 });
       }
 
-      const restaurant = { id: docSnap.id, ...docSnap.data() } as Restaurant;
-      if (restaurant.ownerId !== uid) {
+      if (restaurant.owner_id !== uid) {
         throw new ApiError(403, "You do not have access to this restaurant.");
       }
 
-      return NextResponse.json({ data: restaurant });
+      return NextResponse.json({
+        data: {
+          id: restaurant.id,
+          ownerId: restaurant.owner_id,
+          name: restaurant.name,
+          slug: restaurant.slug,
+          logoUrl: restaurant.logo_url || "",
+          cuisine: restaurant.cuisine || "",
+          currency: restaurant.currency,
+          phone: restaurant.phone || "",
+          whatsapp: restaurant.whatsapp || "",
+          address: restaurant.address || "",
+          status: restaurant.status,
+          activeMenuId: restaurant.active_menu_id,
+          currentPublishedMenuId: restaurant.current_published_menu_id,
+          createdAt: restaurant.created_at,
+          updatedAt: restaurant.updated_at
+        }
+      });
     }
 
-    const snapshot = await adminDb.collection("restaurants").where("ownerId", "==", uid).get();
-    const restaurants = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Restaurant));
-    return NextResponse.json({ data: sortRestaurants(restaurants) });
+    const { data: restaurants, error } = await supabaseAdmin
+      .from("restaurants")
+      .select("*")
+      .eq("owner_id", uid);
+
+    if (error) throw error;
+
+    const mapped = (restaurants || []).map((r: any) => ({
+      id: r.id,
+      ownerId: r.owner_id,
+      name: r.name,
+      slug: r.slug,
+      logoUrl: r.logo_url || "",
+      cuisine: r.cuisine || "",
+      currency: r.currency,
+      phone: r.phone || "",
+      whatsapp: r.whatsapp || "",
+      address: r.address || "",
+      status: r.status as any,
+      activeMenuId: r.active_menu_id,
+      currentPublishedMenuId: r.current_published_menu_id,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at
+    }));
+
+    return NextResponse.json({ data: sortRestaurants(mapped) });
   } catch (error) {
     return handleApiError(error, "Could not load restaurants");
   }
@@ -168,7 +194,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const uid = await requireAuthenticatedUid(request);
-    const adminDb = getAdminDb();
+    const supabaseAdmin = getSupabaseAdmin();
     const body = await request.json();
     const name = String(body.name || "").trim();
 
@@ -176,48 +202,57 @@ export async function POST(request: NextRequest) {
       throw new ApiError(400, "Restaurant name is required.");
     }
 
-    const restaurantsColl = adminDb.collection("restaurants");
-    const restaurantId =
-      typeof body.id === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(body.id)
-        ? body.id
-        : restaurantsColl.doc().id;
+    // Generate a standard UUID if body.id is missing or is not a valid UUID format
+    const isUuid = typeof body.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.id);
+    const restaurantId = isUuid ? body.id : crypto.randomUUID();
     const slug = await getUniqueRestaurantSlug(String(body.slug || name), restaurantId);
 
     const restaurantData = {
+      id: restaurantId,
       name,
       slug,
-      ownerId: uid,
-      logoUrl: String(body.logoUrl || ""),
+      owner_id: uid,
+      logo_url: String(body.logoUrl || ""),
       cuisine: String(body.cuisine || ""),
       currency: String(body.currency || "USD"),
       phone: String(body.phone || ""),
       whatsapp: String(body.whatsapp || ""),
       address: String(body.address || ""),
-      status: "active" as const,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+      status: "active",
+      updated_at: new Date().toISOString()
     };
 
-    const memberData = {
-      uid,
-      role: "owner" as const,
-      invitedAt: FieldValue.serverTimestamp(),
-      joinedAt: FieldValue.serverTimestamp(),
-    };
+    // Insert restaurant
+    const { error: restErr } = await supabaseAdmin
+      .from("restaurants")
+      .insert(restaurantData);
+    if (restErr) throw restErr;
 
-    const batch = adminDb.batch();
-    const restaurantRef = restaurantsColl.doc(restaurantId);
-    batch.set(restaurantRef, restaurantData);
-    batch.set(restaurantRef.collection("members").doc(uid), memberData);
-    await batch.commit();
+    // Add owner to members
+    const { error: memberErr } = await supabaseAdmin
+      .from("restaurant_members")
+      .insert({
+        restaurant_id: restaurantId,
+        uid,
+        role: "owner"
+      });
+    if (memberErr) throw memberErr;
 
-    const nowSeconds = Math.floor(Date.now() / 1000);
     return NextResponse.json({
       data: {
         id: restaurantId,
-        ...restaurantData,
-        createdAt: { seconds: nowSeconds },
-        updatedAt: { seconds: nowSeconds },
+        ownerId: uid,
+        name: restaurantData.name,
+        slug: restaurantData.slug,
+        logoUrl: restaurantData.logo_url,
+        cuisine: restaurantData.cuisine,
+        currency: restaurantData.currency,
+        phone: restaurantData.phone,
+        whatsapp: restaurantData.whatsapp,
+        address: restaurantData.address,
+        status: restaurantData.status,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       },
     });
   } catch (error) {

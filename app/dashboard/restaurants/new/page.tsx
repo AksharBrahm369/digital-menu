@@ -4,9 +4,8 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { createRestaurant } from "@/lib/firebase/db";
-import { db, storage, isFirebaseConfigured } from "@/lib/firebase/config";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { doc, collection } from "firebase/firestore";
+import { isFirebaseConfigured } from "@/lib/firebase/config";
+import { uploadToSupabaseStorage } from "@/lib/supabase";
 import { 
   ArrowLeft, 
   ChefHat, 
@@ -111,9 +110,8 @@ export default function NewRestaurant() {
     setSubmitting(true);
 
     try {
-      // 1. Generate a new document reference in Firestore to get the ID beforehand
-      const newRestRef = doc(collection(db, "restaurants"));
-      const restaurantId = newRestRef.id;
+      // 1. Generate a new restaurant UUID beforehand
+      const restaurantId = crypto.randomUUID();
 
       let logoUrl = "";
       // 2. Upload Logo File if selected
@@ -121,10 +119,7 @@ export default function NewRestaurant() {
         if (isFirebaseConfigured()) {
           try {
             const logoStoragePath = `restaurants/${restaurantId}/logo_${Date.now()}_${logoFile.name}`;
-            const logoRef = ref(storage, logoStoragePath);
-            
-            const uploadResult = await uploadBytes(logoRef, logoFile);
-            logoUrl = await getDownloadURL(uploadResult.ref);
+            logoUrl = await uploadToSupabaseStorage(logoStoragePath, logoFile);
           } catch (uploadError) {
             console.warn("Logo upload failed; continuing without a logo.", uploadError);
           }

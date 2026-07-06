@@ -3,8 +3,8 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspace } from "../layout";
-import { storage, isFirebaseConfigured } from "@/lib/firebase/config";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { isFirebaseConfigured } from "@/lib/firebase/config";
+import { uploadToSupabaseStorage } from "@/lib/supabase";
 import { addUpload, updateUploadStatus, createMenu, saveMenu, MenuCategory } from "@/lib/firebase/db";
 import { parseDigitizedMenuJson, type DigitizedMenuImport } from "@/lib/menu-digitization";
 import { analyzeMenuExtractionQuality, countMenuItems, getRecognizedMenuCorrection, parseMenuTextToCategories } from "@/lib/menu-extraction";
@@ -219,10 +219,8 @@ export default function UploadMenuPage() {
       
       let downloadUrl = "";
       if (isFirebaseConfigured()) {
-        // 1. Upload file to Firebase Storage
-        const fileRef = ref(storage, storagePath);
-        const uploadResult = await uploadBytes(fileRef, file);
-        downloadUrl = await getDownloadURL(uploadResult.ref);
+        // 1. Upload file to Supabase Storage
+        downloadUrl = await uploadToSupabaseStorage(storagePath, file);
       } else {
         downloadUrl = file.type.startsWith("image/") ? await fileToDataUrl(file) : URL.createObjectURL(file);
       }

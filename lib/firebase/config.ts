@@ -43,5 +43,9 @@ export const isMockDatabaseEnabled = () => {
 };
 
 export const isFirebaseConfigured = () => {
-  return hasFirebaseClientConfig() && !isMockDatabaseEnabled();
+  const configured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_FIREBASE_API_KEY
+  );
+  return configured && !isMockDatabaseEnabled();
 };
+
