@@ -235,10 +235,15 @@ async function parseApiResponse(res: Response) {
   }
 
   if (!res.ok) {
-    const textSnippet = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220);
+    if (payload.error) {
+      throw new Error(payload.details ? `${payload.error}: ${payload.details}` : payload.error);
+    }
+
+    const isHtmlError = /^\s*</.test(text);
     throw new Error(
-      payload.error ||
-        `Server returned ${res.status} ${res.statusText || "error"}${textSnippet ? `: ${textSnippet}` : ""}`
+      isHtmlError
+        ? `Server returned ${res.status}. The dashboard data API returned an HTML error page. Check Vercel Function Logs for /api/dashboard-data.`
+        : `Server returned ${res.status} ${res.statusText || "error"}.`
     );
   }
 

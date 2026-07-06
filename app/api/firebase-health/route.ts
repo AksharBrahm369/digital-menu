@@ -1,30 +1,15 @@
 import { NextResponse } from "next/server";
-import { getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase/admin";
+import { getAdminDb, getFirebaseAdminConfigProblem, getFirebaseAdminEnvStatus } from "@/lib/firebase-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function present(value?: string) {
-  return Boolean(value && value.trim());
-}
-
 export async function GET() {
   const configProblem = getFirebaseAdminConfigProblem();
-  const hasServiceAccountJson =
-    present(process.env.FIREBASE_SERVICE_ACCOUNT_KEY) ||
-    present(process.env.FIREBASE_SERVICE_ACCOUNT_JSON) ||
-    present(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-  const checks = {
-    publicProjectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
-    adminProjectId: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
-    hasPublicApiKey: present(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
-    hasClientEmail: present(process.env.FIREBASE_CLIENT_EMAIL) || hasServiceAccountJson,
-    hasPrivateKey: present(process.env.FIREBASE_PRIVATE_KEY) || hasServiceAccountJson,
-    hasServiceAccountJson,
-    mockDatabase: process.env.NEXT_PUBLIC_MOCK_DATABASE || "",
-  };
+  const checks = getFirebaseAdminEnvStatus();
 
   if (configProblem) {
+    console.error("Firebase health check configuration error:", configProblem);
     return NextResponse.json({
       ok: false,
       error: configProblem,
@@ -41,6 +26,7 @@ export async function GET() {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Firestore Admin error.";
+    console.error("Firebase health check Firestore error:", error);
     return NextResponse.json({
       ok: false,
       error: `Firebase Admin could not read Firestore: ${message}`,

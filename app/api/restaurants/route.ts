@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { getAdminAuth, getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase/admin";
+import { FieldValue, getAdminAuth, getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase-admin";
 import type { Restaurant } from "@/lib/firebase/db";
 
 export const runtime = "nodejs";
@@ -22,14 +21,15 @@ function getBearerToken(request: NextRequest) {
 }
 
 async function requireAuthenticatedUid(request: NextRequest) {
-  const configProblem = getFirebaseAdminConfigProblem();
-  if (configProblem) {
-    throw new ApiError(500, configProblem);
-  }
-
   const token = getBearerToken(request);
   if (!token) {
     throw new ApiError(401, "Missing Firebase authentication token.");
+  }
+
+  const configProblem = getFirebaseAdminConfigProblem();
+  if (configProblem) {
+    console.error("Restaurant API Firebase Admin configuration error:", configProblem);
+    throw new ApiError(500, configProblem);
   }
 
   try {
@@ -83,14 +83,16 @@ async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?
   }
 }
 
-function handleApiError(error: unknown) {
+function handleApiError(error: unknown, publicMessage: string) {
+  const details = error instanceof Error ? error.message : "Unknown server error.";
+
   if (error instanceof ApiError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error(`${publicMessage}:`, { status: error.status, details });
+    return NextResponse.json({ error: publicMessage, details }, { status: error.status });
   }
 
-  const message = error instanceof Error ? error.message : "Unknown server error.";
   console.error("Restaurant API error:", error);
-  return NextResponse.json({ error: `Restaurant request failed: ${message}` }, { status: 500 });
+  return NextResponse.json({ error: publicMessage, details }, { status: 500 });
 }
 
 export async function GET(request: NextRequest) {
@@ -118,7 +120,7 @@ export async function GET(request: NextRequest) {
     const restaurants = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Restaurant));
     return NextResponse.json({ data: sortRestaurants(restaurants) });
   } catch (error) {
-    return handleApiError(error);
+    return handleApiError(error, "Could not load restaurants");
   }
 }
 
@@ -178,6 +180,6 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    return handleApiError(error);
+    return handleApiError(error, "Could not create restaurant");
   }
 }

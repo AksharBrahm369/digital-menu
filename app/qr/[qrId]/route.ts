@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, getAdminDb } from "@/lib/firebase-admin";
 import fs from "fs";
 import path from "path";
 
@@ -40,7 +39,7 @@ export async function GET(
     // Detect if mock database mode is enabled. File-backed mock data is not persistent on Vercel.
     const isMock =
       isMockDatabaseAllowed() &&
-      (process.env.NEXT_PUBLIC_MOCK_DATABASE === "true" || !process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
+      process.env.NEXT_PUBLIC_MOCK_DATABASE === "true";
 
     if (isMock) {
       const db = getMockDb();

@@ -35,10 +35,15 @@ async function readApiPayload(response: Response) {
   }
 
   if (!response.ok) {
-    const textSnippet = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220);
+    if (payload.error) {
+      throw new Error(payload.details ? `${payload.error}: ${payload.details}` : payload.error);
+    }
+
+    const isHtmlError = /^\s*</.test(text);
     throw new Error(
-      payload.error ||
-        `Server returned ${response.status} ${response.statusText || "error"}${textSnippet ? `: ${textSnippet}` : ""}`
+      isHtmlError
+        ? `Server returned ${response.status}. The restaurant API returned an HTML error page. Check Vercel Function Logs for /api/restaurants.`
+        : `Server returned ${response.status} ${response.statusText || "error"}.`
     );
   }
 
@@ -93,6 +98,8 @@ export default function Dashboard() {
           setError("This deployment is still using the local mock database. Vercel cannot persist that data, so configure Firebase and set NEXT_PUBLIC_MOCK_DATABASE=false.");
         } else if (message.toLowerCase().includes("permission")) {
           setError("Restaurant access was denied. Sign out and sign in again, or verify your Firebase Admin environment variables in Vercel.");
+        } else if (message.toLowerCase().startsWith("could not load restaurants")) {
+          setError(message);
         } else {
           setError("Could not load restaurants. " + message);
         }

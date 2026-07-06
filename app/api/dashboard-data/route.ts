@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { getAdminAuth, getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase/admin";
+import { FieldValue, getAdminAuth, getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase-admin";
 import type { Menu, MenuCategory, MenuTheme, Restaurant } from "@/lib/firebase/db";
 
 export const runtime = "nodejs";
@@ -32,11 +31,14 @@ function getBearerToken(request: NextRequest) {
 }
 
 async function requireAuthenticatedUid(request: NextRequest) {
-  const configProblem = getFirebaseAdminConfigProblem();
-  if (configProblem) throw new ApiError(500, configProblem);
-
   const token = getBearerToken(request);
   if (!token) throw new ApiError(401, "Missing Firebase authentication token.");
+
+  const configProblem = getFirebaseAdminConfigProblem();
+  if (configProblem) {
+    console.error("Dashboard data API Firebase Admin configuration error:", configProblem);
+    throw new ApiError(500, configProblem);
+  }
 
   try {
     const decoded = await getAdminAuth().verifyIdToken(token);
