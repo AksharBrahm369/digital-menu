@@ -71,8 +71,14 @@ async function requireRestaurantAccess(
   throw new ApiError(403, "You do not have access to this restaurant.");
 }
 
-function handleApiError(error: unknown) {
-  const details = error instanceof Error ? error.message : "Unknown server error.";
+function handleApiError(error: any) {
+  let details = "Unknown server error.";
+  if (error instanceof Error) {
+    details = error.message;
+  } else if (error && typeof error === "object") {
+    details = error.message || error.details || JSON.stringify(error);
+  }
+
   if (error instanceof ApiError) {
     const code =
       error.status === 401
