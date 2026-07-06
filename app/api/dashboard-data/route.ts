@@ -174,22 +174,36 @@ async function syncMenuSubcollections(restaurantId: string, menuId: string, cate
 }
 
 function handleApiError(error: unknown) {
+  const details = error instanceof Error ? error.message : "Unknown server error.";
+  const isConfigError =
+    details.includes("Missing Firebase Admin env vars") ||
+    details.includes("not configured") ||
+    details.includes("initialization failed") ||
+    details.includes("could not be parsed") ||
+    details.includes("Missing FIREBASE_PROJECT_ID") ||
+    details.includes("Missing FIREBASE_CLIENT_EMAIL") ||
+    details.includes("Missing FIREBASE_PRIVATE_KEY");
+
+  if (isConfigError) {
+    return NextResponse.json(
+      { error: "Firebase Admin is not configured.", details, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
+      { status: 500 }
+    );
+  }
+
   if (error instanceof ApiError) {
     const code =
       error.status === 401
         ? "UNAUTHENTICATED"
         : error.status === 403
           ? "FORBIDDEN"
-          : error.status === 500 && error.message.toLowerCase().includes("firebase")
-            ? "FIREBASE_ADMIN_CONFIG_ERROR"
-            : "DASHBOARD_DATA_ERROR";
+          : "DASHBOARD_DATA_ERROR";
     console.error("Dashboard data API request failed:", { status: error.status, details: error.message });
     return NextResponse.json({ error: "Dashboard data request failed", details: error.message, code }, { status: error.status });
   }
 
-  const message = error instanceof Error ? error.message : "Unknown server error.";
   console.error("Dashboard data API error:", error);
-  return NextResponse.json({ error: "Dashboard data request failed", details: message, code: "DASHBOARD_DATA_ERROR" }, { status: 500 });
+  return NextResponse.json({ error: "Dashboard data request failed", details, code: "DASHBOARD_DATA_ERROR" }, { status: 500 });
 }
 
 export async function GET() {

@@ -1,19 +1,8 @@
+import "server-only";
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-
-type AdminConfig = {
-  projectId: string;
-  clientEmail: string;
-  privateKey: string;
-  storageBucket?: string;
-  serviceAccountProvided: boolean;
-  serviceAccountParsed: boolean;
-  source: "service-account-json" | "individual-env-vars";
-};
-
-let cachedAdminApp: App | null = null;
 
 function present(value?: string) {
   return Boolean(value && value.trim());
@@ -50,14 +39,24 @@ function parseServiceAccountJson(rawValue: string) {
         privateKey: parsed.private_key ? normalizePrivateKey(parsed.private_key) : "",
       };
     } catch {
-      // Try the next representation.
+      // Try next
     }
   }
-
   return null;
 }
 
-function readAdminConfig(): AdminConfig {
+function getPrivateKey() {
+  if (process.env.FIREBASE_PRIVATE_KEY_BASE64) {
+    try {
+      return Buffer.from(process.env.FIREBASE_PRIVATE_KEY_BASE64, "base64").toString("utf8");
+    } catch {
+      // ignore, fallback
+    }
+  }
+  return process.env.FIREBASE_PRIVATE_KEY ? normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY) : "";
+}
+
+function readAdminConfig() {
   if (typeof window !== "undefined") {
     throw new Error("Firebase Admin SDK cannot be used in browser code.");
   }
@@ -68,11 +67,10 @@ function readAdminConfig(): AdminConfig {
     process.env.GOOGLE_SERVICE_ACCOUNT_JSON ||
     "";
   const serviceAccount = serviceAccountRaw ? parseServiceAccountJson(serviceAccountRaw) : null;
-  const envPrivateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n") || "";
 
   const projectId = serviceAccount?.projectId || process.env.FIREBASE_PROJECT_ID || "";
   const clientEmail = serviceAccount?.clientEmail || process.env.FIREBASE_CLIENT_EMAIL || "";
-  const privateKey = serviceAccount?.privateKey || (envPrivateKey ? normalizePrivateKey(envPrivateKey) : "");
+  const privateKey = serviceAccount?.privateKey || getPrivateKey();
 
   return {
     projectId,
@@ -81,13 +79,12 @@ function readAdminConfig(): AdminConfig {
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET || undefined,
     serviceAccountProvided: present(serviceAccountRaw),
     serviceAccountParsed: Boolean(serviceAccount),
-    source: serviceAccount ? "service-account-json" : "individual-env-vars",
+    source: serviceAccount ? ("service-account-json" as const) : ("individual-env-vars" as const),
   };
 }
 
 export function getFirebaseAdminEnvStatus() {
   const config = readAdminConfig();
-
   return {
     source: config.source,
     hasFirebaseProjectId: present(config.projectId),
@@ -115,24 +112,19 @@ export function getFirebaseAdminConfigProblem() {
   }
 
   if (!config.privateKey) {
-    return "Missing FIREBASE_PRIVATE_KEY in Vercel Production environment variables.";
+    return "Missing FIREBASE_PRIVATE_KEY/FIREBASE_PRIVATE_KEY_BASE64 in Vercel Production environment variables.";
   }
 
   if (!config.privateKey.includes("-----BEGIN PRIVATE KEY-----") || !config.privateKey.includes("-----END PRIVATE KEY-----")) {
-    return "FIREBASE_PRIVATE_KEY is not formatted correctly. Paste the full private_key from the Firebase service account JSON and keep newline escapes as \\n.";
+    return "FIREBASE_PRIVATE_KEY is not formatted correctly. Paste the full private_key from the Firebase service account JSON.";
   }
 
   return "";
 }
 
-export function getFirebaseAdminApp() {
-  if (cachedAdminApp) return cachedAdminApp;
-
+export function getFirebaseAdminApp(): App {
   const existingApp = getApps()[0];
-  if (existingApp) {
-    cachedAdminApp = existingApp;
-    return cachedAdminApp;
-  }
+  if (existingApp) return existingApp;
 
   const configProblem = getFirebaseAdminConfigProblem();
   if (configProblem) {
@@ -142,23 +134,22 @@ export function getFirebaseAdminApp() {
   const { projectId, clientEmail, privateKey, storageBucket } = readAdminConfig();
 
   try {
-    cachedAdminApp = initializeApp({
+    return initializeApp({
       credential: cert({ projectId, clientEmail, privateKey }),
       storageBucket,
     });
-    return cachedAdminApp;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Firebase Admin initialization error.";
     throw new Error(`Firebase Admin initialization failed: ${message}`);
   }
 }
 
-export function getAdminAuth() {
-  return getAuth(getFirebaseAdminApp());
-}
-
 export function getAdminDb() {
   return getFirestore(getFirebaseAdminApp());
+}
+
+export function getAdminAuth() {
+  return getAuth(getFirebaseAdminApp());
 }
 
 export function getAdminStorage() {

@@ -85,6 +85,21 @@ async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?
 
 function handleApiError(error: unknown, publicMessage: string) {
   const details = error instanceof Error ? error.message : "Unknown server error.";
+  const isConfigError =
+    details.includes("Missing Firebase Admin env vars") ||
+    details.includes("not configured") ||
+    details.includes("initialization failed") ||
+    details.includes("could not be parsed") ||
+    details.includes("Missing FIREBASE_PROJECT_ID") ||
+    details.includes("Missing FIREBASE_CLIENT_EMAIL") ||
+    details.includes("Missing FIREBASE_PRIVATE_KEY");
+
+  if (isConfigError) {
+    return NextResponse.json(
+      { error: "Firebase Admin is not configured.", details, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
+      { status: 500 }
+    );
+  }
 
   if (error instanceof ApiError) {
     console.error(`${publicMessage}:`, { status: error.status, details });
@@ -93,9 +108,7 @@ function handleApiError(error: unknown, publicMessage: string) {
         ? "UNAUTHENTICATED"
         : error.status === 403
           ? "FORBIDDEN"
-          : error.status === 500 && details.toLowerCase().includes("firebase")
-            ? "FIREBASE_ADMIN_CONFIG_ERROR"
-            : "RESTAURANT_API_ERROR";
+          : "RESTAURANT_API_ERROR";
     return NextResponse.json({ error: publicMessage, details, code }, { status: error.status });
   }
 

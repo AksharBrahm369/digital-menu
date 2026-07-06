@@ -79,6 +79,20 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Authentication session endpoint error:", error);
     const details = error instanceof Error ? error.message : "Unknown authentication error.";
+    const isConfigError =
+      details.includes("Missing Firebase Admin env vars") ||
+      details.includes("not configured") ||
+      details.includes("initialization failed") ||
+      details.includes("could not be parsed") ||
+      details.includes("Missing FIREBASE_PROJECT_ID") ||
+      details.includes("Missing FIREBASE_CLIENT_EMAIL") ||
+      details.includes("Missing FIREBASE_PRIVATE_KEY");
+    if (isConfigError) {
+      return NextResponse.json(
+        { error: "Firebase Admin is not configured.", details, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({ error: "Authentication failed", details, code: "AUTH_SESSION_FAILED" }, { status: 401 });
   }
 }

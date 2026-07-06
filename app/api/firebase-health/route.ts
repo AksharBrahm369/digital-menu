@@ -5,20 +5,20 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const configProblem = getFirebaseAdminConfigProblem();
-  const checks = getFirebaseAdminEnvStatus();
-
-  if (configProblem) {
-    console.error("Firebase health check configuration error:", configProblem);
-    return NextResponse.json({
-      ok: false,
-      error: configProblem,
-      code: "FIREBASE_ADMIN_CONFIG_ERROR",
-      checks,
-    }, { status: 500 });
-  }
-
   try {
+    const configProblem = getFirebaseAdminConfigProblem();
+    const checks = getFirebaseAdminEnvStatus();
+
+    if (configProblem) {
+      console.error("Firebase health check configuration error:", configProblem);
+      return NextResponse.json({
+        ok: false,
+        error: configProblem,
+        code: "FIREBASE_ADMIN_CONFIG_ERROR",
+        checks,
+      }, { status: 500 });
+    }
+
     await getAdminDb().collection("restaurants").limit(1).get();
     return NextResponse.json({
       ok: true,
@@ -28,6 +28,14 @@ export async function GET() {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Firestore Admin error.";
     console.error("Firebase health check Firestore error:", error);
+    
+    let checks = null;
+    try {
+      checks = getFirebaseAdminEnvStatus();
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json({
       ok: false,
       error: `Firebase Admin could not read Firestore: ${message}`,

@@ -121,23 +121,27 @@ export async function GET(
     const referer = request.headers.get("referer") || "Direct Scan";
 
     // 3. Increment scan counts and log history atomically using a batch write
-    const batch = adminDb.batch();
-    
-    // Increment scan count on QR placard
-    batch.update(qrDocRef, {
-      scanCount: FieldValue.increment(1),
-    });
+    try {
+      const batch = adminDb.batch();
+      
+      // Increment scan count on QR placard
+      batch.update(qrDocRef, {
+        scanCount: FieldValue.increment(1),
+      });
 
-    // Write scan log to subcollection restaurants/{restaurantId}/scans
-    const scanLogRef = adminDb.collection("restaurants").doc(restaurantId).collection("scans").doc();
-    batch.set(scanLogRef, {
-      qrId,
-      timestamp: FieldValue.serverTimestamp(),
-      userAgent,
-      referer,
-    });
+      // Write scan log to subcollection restaurants/{restaurantId}/scans
+      const scanLogRef = adminDb.collection("restaurants").doc(restaurantId).collection("scans").doc();
+      batch.set(scanLogRef, {
+        qrId,
+        timestamp: FieldValue.serverTimestamp(),
+        userAgent,
+        referer,
+      });
 
-    await batch.commit();
+      await batch.commit();
+    } catch (writeError) {
+      console.warn("Non-blocking warning: Failed to record QR scan analytics:", writeError);
+    }
 
     // 4. Perform redirect redirecting to /m/[slug]?table=[tableName]
     const destinationUrl = new URL(`/m/${slug}`, request.url);

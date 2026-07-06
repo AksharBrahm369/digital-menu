@@ -70,12 +70,12 @@ export async function GET(request: NextRequest) {
       ...restaurantSnapshot.docs[0].data(),
     } as Restaurant;
     if (restaurant.status !== "published" || !restaurant.currentPublishedMenuId) {
-      return NextResponse.json({ error: "Published menu not found.", code: "MENU_NOT_FOUND" }, { status: 404 });
+      return NextResponse.json({ error: "Published menu not found.", code: "MENU_NOT_PUBLISHED" }, { status: 404 });
     }
 
     const menu = await getPublishedMenu(restaurant);
     if (!menu || menu.status !== "published") {
-      return NextResponse.json({ error: "Published menu not found.", code: "MENU_NOT_FOUND" }, { status: 404 });
+      return NextResponse.json({ error: "Published menu not found.", code: "MENU_NOT_PUBLISHED" }, { status: 404 });
     }
 
     const [categoriesSnapshot, itemsSnapshot, themesSnapshot] = await Promise.all([
@@ -100,6 +100,21 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown public menu error.";
     console.error("Public menu API error:", error);
+    const isConfigError =
+      message.includes("Missing Firebase Admin env vars") ||
+      message.includes("not configured") ||
+      message.includes("initialization failed") ||
+      message.includes("could not be parsed") ||
+      message.includes("Missing FIREBASE_PROJECT_ID") ||
+      message.includes("Missing FIREBASE_CLIENT_EMAIL") ||
+      message.includes("Missing FIREBASE_PRIVATE_KEY");
+
+    if (isConfigError) {
+      return NextResponse.json(
+        { error: "Firebase Admin is not configured.", details: message, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({ error: "Public menu request failed", details: message, code: "PUBLIC_MENU_ERROR" }, { status: 500 });
   }
 }
