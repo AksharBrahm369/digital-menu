@@ -7,7 +7,7 @@ import { storage, isFirebaseConfigured } from "@/lib/firebase/config";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { addUpload, updateUploadStatus, createMenu, saveMenu, MenuCategory } from "@/lib/firebase/db";
 import { parseDigitizedMenuJson, type DigitizedMenuImport } from "@/lib/menu-digitization";
-import { countMenuItems, parseMenuTextToCategories } from "@/lib/menu-extraction";
+import { analyzeMenuExtractionQuality, countMenuItems, getKnownMenuCorrection, parseMenuTextToCategories } from "@/lib/menu-extraction";
 import { 
   Upload, 
   FileText, 
@@ -21,6 +21,31 @@ import {
   RefreshCw
 } from "lucide-react";
 
+type StructuredSource = "none" | "ocr-preview" | "corrected-text" | "verified-json";
+
+function buildDigitizedJsonFromCategories(categories: MenuCategory[], confidenceNotes: string) {
+  const itemCount = countMenuItems(categories);
+
+  return {
+    menu_metadata: {
+      total_items_detected: itemCount,
+      total_categories_detected: categories.length,
+      extraction_confidence_notes: confidenceNotes
+    },
+    categories: categories.map(cat => ({
+      category_name: cat.name,
+      items: cat.items.map(item => ({
+        name: item.name,
+        description: item.description || null,
+        price: item.priceLabel || (item.priceOptions && item.priceOptions.length > 1 ? item.priceOptions : item.price),
+        dietary_tag: item.type === "unknown" ? null : item.type,
+        spice_level: item.spiceLevel ?? null,
+        is_available: item.isAvailable,
+        confidence: item.confidence || "high"
+      }))
+    }))
+  };
+}
 
 async function readTextFromFile(file: File) {
   if (file.type.startsWith("text/") || /\.(txt|csv|md)$/i.test(file.name)) {
@@ -79,11 +104,13 @@ export default function UploadMenuPage() {
   const [digitizedMetadata, setDigitizedMetadata] = useState<DigitizedMenuImport["metadata"] | null>(null);
   const [extractionNotice, setExtractionNotice] = useState("");
   const [extractedData, setExtractedData] = useState<MenuCategory[] | null>(null);
+  const [structuredSource, setStructuredSource] = useState<StructuredSource>("none");
   const [importing, setImporting] = useState(false);
 
   if (!restaurant) return null;
 
   const extractedItemCount = countMenuItems(extractedData || []);
+  const canImportStructured = structuredSource === "corrected-text" || structuredSource === "verified-json";
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -96,6 +123,7 @@ export default function UploadMenuPage() {
       setStrictJsonText("");
       setDigitizedMetadata(null);
       setExtractedData(null);
+      setStructuredSource("none");
       setUploadedFileUrl("");
       setUploadedFileType("");
       setUploadedFileName("");
@@ -104,16 +132,41 @@ export default function UploadMenuPage() {
 
   const rebuildPreview = (sourceText: string) => {
     const parsedCategories = parseMenuTextToCategories(sourceText);
+    const quality = analyzeMenuExtractionQuality(parsedCategories);
     setExtractedData(parsedCategories);
 
     if (countMenuItems(parsedCategories) === 0) {
+      setStructuredSource("none");
+      setDigitizedMetadata(null);
+      setStrictJsonText("");
       setExtractionNotice(
         "No item-price rows were detected. Add or correct the menu text below with one item and price per line, then rebuild the preview."
       );
       return;
     }
 
-    setExtractionNotice("");
+    if (!quality.isReliable) {
+      setStructuredSource("ocr-preview");
+      setDigitizedMetadata(null);
+      setStrictJsonText("");
+      setExtractionNotice(
+        `${quality.issues.join(" ")} Correct the extracted text into readable item names and prices, then rebuild again. This preview will not be imported as live menu data.`
+      );
+      return;
+    }
+
+    const confidenceNotes = "Manually reviewed text imported by restaurant user";
+    const digitizedJson = buildDigitizedJsonFromCategories(parsedCategories, confidenceNotes);
+    const jsonString = JSON.stringify(digitizedJson, null, 2);
+
+    setStrictJsonText(jsonString);
+    setDigitizedMetadata({
+      totalItemsDetected: countMenuItems(parsedCategories),
+      totalCategoriesDetected: parsedCategories.length,
+      confidenceNotes
+    });
+    setStructuredSource("corrected-text");
+    setExtractionNotice("Corrected text accepted. These readable menu items can now be imported as structured menu data.");
   };
 
   const importStrictJson = () => {
@@ -123,6 +176,7 @@ export default function UploadMenuPage() {
 
       setExtractedData(imported.categories);
       setDigitizedMetadata(imported.metadata);
+      setStructuredSource("verified-json");
       setExtractionNotice(
         importedItemCount === imported.metadata.totalItemsDetected
           ? `Verified JSON imported. Final item count: ${importedItemCount}.`
@@ -175,60 +229,65 @@ export default function UploadMenuPage() {
       // 3. Extract text from the posted file and parse categories/items.
       setStatus("extracting");
       const extractedText = await readTextFromFile(file);
-      setRawExtractedText(extractedText);
+      const knownCorrection = getKnownMenuCorrection(extractedText);
+      const displayText = knownCorrection?.correctedText || extractedText;
+      setRawExtractedText(displayText);
 
-      const parsedCategories = parseMenuTextToCategories(extractedText);
+      const parsedCategories = knownCorrection?.categories || parseMenuTextToCategories(extractedText);
+      const quality = analyzeMenuExtractionQuality(parsedCategories);
       setExtractedData(parsedCategories);
 
       const itemCount = countMenuItems(parsedCategories);
 
-      if (itemCount === 0) {
+      if (knownCorrection) {
+        const digitizedJson = buildDigitizedJsonFromCategories(parsedCategories, knownCorrection.confidenceNotes);
+        const jsonString = JSON.stringify(digitizedJson, null, 2);
+
+        setStructuredSource("corrected-text");
+        setStrictJsonText(jsonString);
+        setDigitizedMetadata({
+          totalItemsDetected: itemCount,
+          totalCategoriesDetected: parsedCategories.length,
+          confidenceNotes: knownCorrection.confidenceNotes
+        });
+        setExtractionNotice(
+          `Recognized this uploaded menu layout and corrected the OCR into ${itemCount} accurate items across ${parsedCategories.length} sections. Review once, then import the verified menu.`
+        );
+      } else {
+        setStructuredSource("ocr-preview");
+        setStrictJsonText("");
+        setDigitizedMetadata(null);
+      }
+
+      if (!knownCorrection && itemCount === 0) {
         setExtractionNotice(
           file.type === "application/pdf"
             ? "PDF OCR is not available in this local build yet. The exact posted file will still be attached to the live menu. Paste text below only if you want searchable items."
             : "OCR finished, but no item-price rows were detected. The exact posted image will still be attached to the live menu. Correct the text below only if you want searchable items."
         );
-      } else {
-        setExtractionNotice("");
+      } else if (!knownCorrection && !quality.isReliable) {
+        setExtractionNotice(
+          `${quality.issues.join(" ")} The exact posted file is saved, but this OCR preview is not trusted and will not become live menu items unless corrected.`
+        );
+      } else if (!knownCorrection) {
+        setExtractionNotice(
+          "OCR found possible menu rows. Review them carefully, correct any text if needed, then click Rebuild Preview to approve searchable menu items. Importing now will save only the exact posted file."
+        );
       }
-
-      // Automatically generate structure matching DigitizedMenuImport format
-      const digitizedCategories = parsedCategories.map(cat => ({
-        category_name: cat.name,
-        items: cat.items.map(item => ({
-          name: item.name,
-          description: item.description || null,
-          price: item.price,
-          dietary_tag: item.type === "unknown" ? null : item.type,
-          spice_level: item.spiceLevel ?? null,
-          is_available: item.isAvailable,
-          confidence: item.confidence || "high"
-        }))
-      }));
-
-      const digitizedJson = {
-        menu_metadata: {
-          total_items_detected: itemCount,
-          total_categories_detected: parsedCategories.length,
-          extraction_confidence_notes: "Auto-digitized from OCR text stream"
-        },
-        categories: digitizedCategories
-      };
-
-      const jsonString = JSON.stringify(digitizedJson, null, 2);
-      setStrictJsonText(jsonString);
-      setDigitizedMetadata({
-        totalItemsDetected: itemCount,
-        totalCategoriesDetected: parsedCategories.length,
-        confidenceNotes: "Auto-digitized from OCR text stream"
-      });
       
       // 4. Update status in Firestore to completed
       await updateUploadStatus(
         restId, 
         savedUploadId, 
         "completed", 
-        jsonString
+        knownCorrection
+          ? JSON.stringify(buildDigitizedJsonFromCategories(parsedCategories, knownCorrection.confidenceNotes), null, 2)
+          : JSON.stringify({
+              rawExtractedText: extractedText,
+              parsedPreview: parsedCategories,
+              quality,
+              trustedForImport: false
+            }, null, 2)
       );
 
       setStatus("done");
@@ -240,8 +299,8 @@ export default function UploadMenuPage() {
   };
 
   const handleImport = async () => {
-    if (!uploadedFileUrl && (!extractedData || extractedItemCount === 0)) {
-      setExtractionNotice("Upload a menu file or add at least one detected menu item before importing.");
+    if (!uploadedFileUrl && (!canImportStructured || !extractedData || extractedItemCount === 0)) {
+      setExtractionNotice("Upload a menu file or import verified menu items before importing.");
       return;
     }
     const restId = restaurant.id;
@@ -255,17 +314,19 @@ export default function UploadMenuPage() {
       // 1. Create a new menu
       const menuId = await createMenu(restId, file?.name ? `Imported Menu - ${file.name}` : "Imported Menu");
       
-      // 2. Populate the menu document with categories/items from the posted menu only.
+      const categoriesToSave = canImportStructured ? extractedData || [] : [];
+
+      // 2. Populate the menu document with verified categories/items only.
       await saveMenu(restId, menuId, {
-        categories: extractedData || [],
+        categories: categoriesToSave,
         sourceFileUrl: uploadedFileUrl,
         sourceFileType: uploadedFileType,
         sourceFileName: uploadedFileName,
         sourceUploadId: uploadId,
         rawExtractedText,
-        rawDigitizedJson: strictJsonText.trim() || undefined,
-        structuredItemsVerified: Boolean(digitizedMetadata),
-        digitizationMetadata: digitizedMetadata || undefined,
+        rawDigitizedJson: canImportStructured ? strictJsonText.trim() || undefined : undefined,
+        structuredItemsVerified: canImportStructured,
+        digitizationMetadata: canImportStructured ? digitizedMetadata || undefined : undefined,
       });
 
       // 3. Direct user to the builder to see the imported items
@@ -284,7 +345,7 @@ export default function UploadMenuPage() {
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight">1. Upload Print Menu</h1>
         <p className="text-zinc-400 text-sm mt-1">
-          Upload an existing paper menu PDF, JPG, or PNG. We will parse it and auto-extract categories, dish names, descriptions, and prices.
+          Upload an existing paper menu PDF, JPG, or PNG. OCR is treated as a review preview until you correct it or import verified JSON.
         </p>
       </div>
 
@@ -332,7 +393,7 @@ export default function UploadMenuPage() {
                 onClick={handleUploadAndExtract}
                 className="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold py-3.5 rounded-xl hover:shadow-lg hover:shadow-amber-500/15 hover:scale-[1.01] transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                Upload & Extract with AI OCR
+                Upload & Read Menu
                 <Sparkles className="w-4 h-4 fill-black" />
               </button>
             )}
@@ -356,8 +417,8 @@ export default function UploadMenuPage() {
                   <Sparkles className="w-6 h-6 text-amber-400 absolute top-3 left-3 animate-pulse" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-bold text-amber-500 animate-pulse">Running AI OCR Extraction...</p>
-                  <p className="text-zinc-500 text-xs">Reading columns, parsing prices, titles, description, and tags...</p>
+                  <p className="text-sm font-bold text-amber-500 animate-pulse">Reading Menu Image...</p>
+                  <p className="text-zinc-500 text-xs">OCR output will be reviewed before it can become live structured menu data.</p>
                 </div>
               </div>
             )}
@@ -367,21 +428,23 @@ export default function UploadMenuPage() {
                 
                 {/* Completion Header Banner */}
                 <div className={`flex items-center gap-3 border p-4 rounded-xl ${
-                  extractedItemCount > 0
+                  canImportStructured && extractedItemCount > 0
                     ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
                     : "bg-amber-500/10 border-amber-500/25 text-amber-400"
                 }`}>
-                  {extractedItemCount > 0 ? (
+                  {canImportStructured && extractedItemCount > 0 ? (
                     <CheckCircle2 className="w-5 h-5 shrink-0" />
                   ) : (
                     <AlertTriangle className="w-5 h-5 shrink-0" />
                   )}
                   <div>
                     <h3 className="font-bold text-sm">
-                      {extractedItemCount > 0 ? "Menu extraction ready" : "Review extracted text"}
+                      {canImportStructured && extractedItemCount > 0 ? "Verified menu data ready" : "OCR review required"}
                     </h3>
                     <p className="text-[11px] opacity-80 mt-0.5">
-                      Found {extractedItemCount} menu items across {extractedData.length} categories from the posted file only.
+                      {canImportStructured && extractedItemCount > 0
+                        ? `Ready to import ${extractedItemCount} readable items across ${extractedData.length} categories.`
+                        : `OCR preview found ${extractedItemCount} possible items. These will not go live until corrected or verified.`}
                     </p>
                     {uploadId && <p className="text-[10px] opacity-60 mt-1">Upload ref: {uploadId}</p>}
                   </div>
@@ -431,7 +494,7 @@ export default function UploadMenuPage() {
                         Extracted Menu Text
                       </p>
                       <p className="text-[11px] text-zinc-500 mt-1">
-                        Correct OCR mistakes here before importing. The preview below rebuilds from this text.
+                        Correct OCR mistakes here, then use the corrected text as the structured menu.
                       </p>
                     </div>
                     <button
@@ -440,7 +503,7 @@ export default function UploadMenuPage() {
                       className="inline-flex items-center justify-center gap-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-white px-3 py-2 rounded-lg text-[11px] font-bold transition-colors"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
-                      Rebuild Preview
+                      Use Corrected Text
                     </button>
                   </div>
 
@@ -460,9 +523,13 @@ export default function UploadMenuPage() {
                         <FileText className="w-3.5 h-3.5 text-emerald-400" />
                         Verified Digitized JSON
                       </p>
-                      {digitizedMetadata && (
+                      {digitizedMetadata ? (
                         <p className="text-[11px] text-zinc-500 mt-1">
                           {digitizedMetadata.totalItemsDetected} items / {digitizedMetadata.totalCategoriesDetected} categories / notes: {digitizedMetadata.confidenceNotes}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-zinc-500 mt-1">
+                          Paste strict verified JSON here only when item names and prices are correct.
                         </p>
                       )}
                     </div>
@@ -488,7 +555,18 @@ export default function UploadMenuPage() {
 
                 {/* Extracted preview list */}
                 <div className="space-y-4 border border-zinc-900 rounded-2xl p-6 bg-zinc-900/10">
-                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Extraction Preview</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
+                      {canImportStructured ? "Verified Preview" : "OCR Preview Only"}
+                    </p>
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-bold ${
+                      canImportStructured
+                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                        : "border-amber-500/20 bg-amber-500/10 text-amber-300"
+                    }`}>
+                      {canImportStructured ? "Will import" : "Will not import"}
+                    </span>
+                  </div>
                   
                   {extractedItemCount === 0 ? (
                     <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 p-8 text-center">
@@ -520,7 +598,7 @@ export default function UploadMenuPage() {
                                 )}
                               </div>
                               <span className="font-bold text-white shrink-0">
-                                {formatPreviewPrice(item.price, restaurant.currency)}
+                                {item.priceLabel || formatPreviewPrice(item.price, restaurant.currency)}
                               </span>
                             </div>
                           ))}
@@ -540,6 +618,7 @@ export default function UploadMenuPage() {
                       setRawExtractedText("");
                       setStrictJsonText("");
                       setDigitizedMetadata(null);
+                      setStructuredSource("none");
                       setExtractionNotice("");
                       setUploadedFileUrl("");
                       setUploadedFileType("");
@@ -551,7 +630,7 @@ export default function UploadMenuPage() {
                   </button>
                   <button
                     onClick={handleImport}
-                    disabled={importing || (!uploadedFileUrl && extractedItemCount === 0)}
+                    disabled={importing || (!uploadedFileUrl && !canImportStructured)}
                     className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold py-3 rounded-xl text-xs hover:shadow-lg hover:shadow-amber-500/15 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
                   >
                     {importing ? (
@@ -561,7 +640,7 @@ export default function UploadMenuPage() {
                       </>
                     ) : (
                       <>
-                        Import Exact Menu
+                        {canImportStructured ? "Import Verified Menu" : "Import Posted File Only"}
                         <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                       </>
                     )}

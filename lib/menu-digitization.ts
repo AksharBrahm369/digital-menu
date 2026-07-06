@@ -102,6 +102,13 @@ function normalizePriceOptions(price: DigitizedItem["price"]): DigitizedPrice[] 
   }];
 }
 
+function normalizePriceLabel(price: DigitizedItem["price"]) {
+  if (typeof price !== "string") return "";
+  const label = price.trim();
+  if (!label || normalizeAmount(label) !== null) return "";
+  return label;
+}
+
 function normalizeVariants(value: DigitizedItem["variants"]) {
   if (!value) return [];
   if (Array.isArray(value)) return value.map(String).map(item => item.trim()).filter(Boolean);
@@ -127,6 +134,7 @@ function convertItem(
 ): MenuItem {
   const priceOptions = normalizePriceOptions(item.price);
   const firstAmount = priceOptions.find(option => option.amount !== null)?.amount ?? 0;
+  const priceLabel = normalizePriceLabel(item.price) || priceOptions.find(option => option.amount === null && option.size)?.size || "";
   const dietaryTag = normalizeDietaryTag(item.dietary_tag);
   const specialTag = item.special_tag?.trim() || null;
   const tags = specialTag ? [specialTag] : [];
@@ -136,6 +144,7 @@ function convertItem(
     name: item.name,
     description: item.description || "",
     price: firstAmount,
+    priceLabel,
     priceOptions,
     variants: normalizeVariants(item.variants),
     confidence: item.confidence || "high",

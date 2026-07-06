@@ -70,6 +70,7 @@ export interface MenuItem {
   name: string;
   description: string;
   price: number;
+  priceLabel?: string;
   priceOptions?: Array<{ size?: string | null; amount: number | null }>;
   variants?: string[];
   confidence?: "high" | "medium" | "low";
@@ -465,15 +466,23 @@ export async function saveMenu(restaurantId: string, menuId: string, menuData: P
               name: item.name || "",
               description: item.description || "",
               price: Number(item.price) || 0,
+              priceLabel: item.priceLabel || "",
+              priceOptions: item.priceOptions || [],
+              variants: item.variants || [],
+              confidence: item.confidence || "high",
+              subcategory: item.subcategory || null,
+              dietaryTag: item.dietaryTag || null,
+              specialTag: item.specialTag || null,
+              type: item.type || item.dietaryTag || "unknown",
               imageUrl: item.imageUrl || item.image || "",
               isAvailable: item.isAvailable !== false,
               isVeg: item.type === "veg" || item.type === "vegan" || item.dietaryTag === "veg" || item.dietaryTag === "vegan",
               isFeatured: item.isFeatured || item.isPopular || false,
+              isPopular: item.isPopular || false,
               spiceLevel: item.spiceLevel ?? null,
               allergens: item.allergens || [],
               tags: item.tags || [],
               sortOrder: item.sortOrder ?? itemIndex,
-              sourceText: item.specialTag || "",
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             });
@@ -549,11 +558,15 @@ export async function getMenu(restaurantId: string, menuId: string): Promise<Men
 export async function getPublishedMenuForRestaurant(restaurant: Restaurant): Promise<Menu | null> {
   if (!restaurant.id) return null;
 
-  const preferredMenuId = restaurant.currentPublishedMenuId || restaurant.activeMenuId;
-  if (preferredMenuId) {
-    const preferredMenu = await getMenu(restaurant.id, preferredMenuId);
-    if (preferredMenu?.status === "published") {
-      return preferredMenu;
+  if (restaurant.currentPublishedMenuId) {
+    const currentMenu = await getMenu(restaurant.id, restaurant.currentPublishedMenuId);
+    return currentMenu?.status === "published" ? currentMenu : null;
+  }
+
+  if (restaurant.activeMenuId) {
+    const activeMenu = await getMenu(restaurant.id, restaurant.activeMenuId);
+    if (activeMenu?.status === "published") {
+      return activeMenu;
     }
   }
 

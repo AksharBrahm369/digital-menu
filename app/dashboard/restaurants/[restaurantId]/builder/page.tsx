@@ -391,7 +391,9 @@ export default function MenuBuilder() {
                           <span className="truncate">{item.name}</span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="font-semibold text-zinc-300">${item.price.toFixed(2)}</span>
+                          <span className="font-semibold text-zinc-300">
+                            {item.priceLabel || `${restaurant.currency} ${item.price.toFixed(2)}`}
+                          </span>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -451,6 +453,17 @@ export default function MenuBuilder() {
                     step="0.01"
                     value={activeItem.price}
                     onChange={(e) => handleUpdateItemDetails({ price: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-amber-500 transition-all font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-300">Price Label (optional)</label>
+                  <input
+                    type="text"
+                    value={activeItem.priceLabel || ""}
+                    onChange={(e) => handleUpdateItemDetails({ priceLabel: e.target.value })}
+                    placeholder="MRP, Seasonal, Ask"
                     className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-amber-500 transition-all font-mono"
                   />
                 </div>
