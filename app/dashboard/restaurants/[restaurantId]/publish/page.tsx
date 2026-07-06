@@ -4,11 +4,11 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useWorkspace } from "../layout";
 import { getMenus, getRestaurantQrs, createQrCode, publishMenu, Menu, QrCode } from "@/lib/firebase/db";
+import { canPublishMenu, getMenuItemCount, getStructuredMenuTrustIssues, hasTrustedStructuredItems } from "@/lib/menu-trust";
 import QRCode from "qrcode";
 import { 
   QrCode as QrIcon, 
   Loader2, 
-  Globe, 
   Plus, 
   Download, 
   Printer, 
@@ -16,15 +16,16 @@ import {
   CheckCircle2, 
   AlertTriangle,
   Layers,
-  ChefHat
+  ChefHat,
+  Copy
 } from "lucide-react";
 
-function getMenuItemCount(menu: Menu) {
-  return menu.categories?.reduce((acc, cat) => acc + (cat.items?.length || 0), 0) || 0;
+function hasPublishableMenuContent(menu: Menu) {
+  return canPublishMenu(menu);
 }
 
-function hasPublishableMenuContent(menu: Menu) {
-  return getMenuItemCount(menu) > 0 || Boolean(menu.sourceFileUrl);
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
 }
 
 export default function PublishPage() {
@@ -44,6 +45,9 @@ export default function PublishPage() {
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [error, setError] = useState("");
   const [selectedPrintQr, setSelectedPrintQr] = useState<QrCode | null>(null);
+  const [qrBaseUrl, setQrBaseUrl] = useState("");
+  const [qrBaseWarning, setQrBaseWarning] = useState("");
+  const [copiedQrUrl, setCopiedQrUrl] = useState(false);
 
   // QR rendering refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -85,18 +89,44 @@ export default function PublishPage() {
     loadPublishDetails();
   }, [restaurantId]);
 
-  // Callback Ref: executes immediately when canvas mounts in the DOM
-  const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
-    // Populate raw ref for print & download actions
-    canvasRef.current = canvas;
-    
-    if (!canvas) return;
-    
-    // Fallback to customer menu URL if no table QR is selected
-    const qrUrl = selectedPrintQr 
-      ? `${window.location.origin}/qr/${selectedPrintQr.id}`
-      : `${window.location.origin}/m/${restaurantSlug}`;
-    
+  useEffect(() => {
+    let mounted = true;
+
+    async function resolveQrBaseUrl() {
+      const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+
+      try {
+        const response = await fetch("/api/runtime-public-url", { cache: "no-store" });
+        const data = await response.json();
+        const resolvedBaseUrl = trimTrailingSlash(data.baseUrl || browserOrigin);
+
+        if (!mounted) return;
+        setQrBaseUrl(resolvedBaseUrl);
+        setQrBaseWarning(data.warning || "");
+      } catch (err) {
+        console.error("Failed to resolve public QR URL:", err);
+        if (!mounted) return;
+        setQrBaseUrl(trimTrailingSlash(browserOrigin));
+        setQrBaseWarning("Using the current browser URL for QR generation.");
+      }
+    }
+
+    resolveQrBaseUrl();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const baseUrl = qrBaseUrl || (typeof window !== "undefined" ? window.location.origin : "");
+  const liveMenuUrl = baseUrl && restaurantSlug ? `${trimTrailingSlash(baseUrl)}/m/${restaurantSlug}` : `/m/${restaurantSlug}`;
+  const activeQrScanUrl = selectedPrintQr && baseUrl
+    ? `${trimTrailingSlash(baseUrl)}/qr/${selectedPrintQr.id}`
+    : liveMenuUrl;
+
+  const drawQrCode = useCallback((canvas: HTMLCanvasElement | null, qrUrl: string) => {
+    if (!canvas || !qrUrl) return;
+
     QRCode.toCanvas(
       canvas,
       qrUrl,
@@ -112,15 +142,38 @@ export default function PublishPage() {
         if (error) console.error("Error generating QR Canvas:", error);
       }
     );
-  }, [selectedPrintQr, restaurantSlug]);
+  }, []);
+
+  useEffect(() => {
+    drawQrCode(canvasRef.current, activeQrScanUrl);
+  }, [activeQrScanUrl, drawQrCode]);
+
+  // Callback Ref: executes immediately when canvas mounts in the DOM
+  const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
+    canvasRef.current = canvas;
+    drawQrCode(canvas, activeQrScanUrl);
+  }, [activeQrScanUrl, drawQrCode]);
 
   if (!restaurant || !restaurantId) return null;
 
+  const selectedMenu = menus.find(menu => menu.id === selectedMenuId) || null;
+  const selectedMenuTrustIssues = selectedMenu ? getStructuredMenuTrustIssues(selectedMenu) : [];
+  const selectedHasTrustedItems = selectedMenu ? hasTrustedStructuredItems(selectedMenu) : false;
+  const selectedMenuItemCount = selectedMenu ? getMenuItemCount(selectedMenu) : 0;
+  const willPublishSourceOnly = Boolean(selectedMenu?.sourceFileUrl && !selectedHasTrustedItems);
+
   const handlePublish = async () => {
     if (!selectedMenuId) return;
-    setPublishing(true);
     setError("");
     setPublishSuccess(false);
+
+    const menuToPublish = menus.find(menu => menu.id === selectedMenuId);
+    if (!menuToPublish || !canPublishMenu(menuToPublish)) {
+      setError("Select a menu with verified structured items or an uploaded source file before deploying.");
+      return;
+    }
+
+    setPublishing(true);
 
     try {
       await publishMenu(restaurant.id!, selectedMenuId);
@@ -155,19 +208,34 @@ export default function PublishPage() {
   };
 
   const downloadQrPng = () => {
-    if (!canvasRef.current || !selectedPrintQr) return;
+    if (!canvasRef.current) return;
     
     const link = document.createElement("a");
-    link.download = `${restaurant.slug}_qr_${selectedPrintQr.name.replace(/\s+/g, "_")}.png`;
+    const qrName = selectedPrintQr?.name || "live_menu";
+    link.download = `${restaurant.slug}_qr_${qrName.replace(/\s+/g, "_")}.png`;
     link.href = canvasRef.current.toDataURL("image/png");
     link.click();
   };
 
+  const copyQrUrl = async () => {
+    if (!activeQrScanUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(activeQrScanUrl);
+      setCopiedQrUrl(true);
+      setTimeout(() => setCopiedQrUrl(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy QR URL:", err);
+      setError("Could not copy the QR link. You can still open it from the link shown below.");
+    }
+  };
+
   const printTablePlacard = () => {
     const printWindow = window.open("", "_blank");
-    if (!printWindow || !selectedPrintQr || !canvasRef.current) return;
+    if (!printWindow || !canvasRef.current) return;
 
     const qrImageSrc = canvasRef.current.toDataURL("image/png");
+    const placardLabel = selectedPrintQr?.name || "Live Menu";
     const logoHtml = restaurant.logoUrl 
       ? `<img src="${restaurant.logoUrl}" style="width: 70px; height: 70px; border-radius: 12px; object-fit: cover; margin-bottom: 12px;" />`
       : `<div style="font-size: 32px; margin-bottom: 12px;">🍴</div>`;
@@ -175,7 +243,7 @@ export default function PublishPage() {
     printWindow.document.write(`
       <html>
         <head>
-          <title>Print Placard - ${selectedPrintQr.name}</title>
+          <title>Print Placard - ${placardLabel}</title>
           <style>
             body {
               font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -240,7 +308,7 @@ export default function PublishPage() {
             <h1 class="rest-name">${restaurant.name}</h1>
             <div class="cuisine">${restaurant.cuisine || "Digital Menu"}</div>
             
-            <div class="table-tag">${selectedPrintQr.name}</div>
+            <div class="table-tag">${placardLabel}</div>
             
             <br />
             <div class="qr-container">
@@ -272,8 +340,6 @@ export default function PublishPage() {
       </div>
     );
   }
-
-  const liveMenuUrl = `${window.location.origin}/m/${restaurant.slug}`;
 
   return (
     <div className="p-6 md:p-10 space-y-10 max-w-5xl">
@@ -334,18 +400,42 @@ export default function PublishPage() {
                       target="_blank" 
                       className="text-[10px] text-amber-500 hover:underline flex items-center gap-1 mt-0.5"
                     >
-                      /m/{restaurant.slug}
+                      {liveMenuUrl}
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   </div>
                   <button
                     onClick={handlePublish}
-                    disabled={publishing}
+                    disabled={publishing || !selectedMenu || !canPublishMenu(selectedMenu)}
                     className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-4 py-2 rounded-xl text-xs transition-colors cursor-pointer"
                   >
                     {publishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Deploy Live"}
                   </button>
                 </div>
+
+                {selectedMenu && (
+                  <div className={`rounded-xl border p-3 text-[11px] leading-5 ${
+                    willPublishSourceOnly
+                      ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
+                      : selectedMenuTrustIssues.length > 0
+                        ? "border-rose-500/25 bg-rose-500/10 text-rose-300"
+                        : "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+                  }`}>
+                    {willPublishSourceOnly ? (
+                      <span>
+                        This will publish the exact uploaded menu file only. Unverified OCR rows are hidden from customers.
+                      </span>
+                    ) : selectedMenuTrustIssues.length > 0 ? (
+                      <span>
+                        This menu cannot be deployed as structured data: {selectedMenuTrustIssues.join(" ")}
+                      </span>
+                    ) : (
+                      <span>
+                        Verified structured menu ready with {selectedMenuItemCount} customer-visible items.
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -436,7 +526,7 @@ export default function PublishPage() {
 
               {/* Table Spot Tag */}
               <div className="bg-stone-900 text-white text-[11px] font-extrabold px-3 py-1 rounded-full uppercase mt-2 select-none tracking-wider">
-                {selectedPrintQr ? selectedPrintQr.name : "Sample Table"}
+                {selectedPrintQr ? selectedPrintQr.name : "Live Menu"}
               </div>
 
               {/* QR Code Canvas */}
@@ -454,24 +544,50 @@ export default function PublishPage() {
             </div>
 
             {/* Quick action buttons */}
-            {selectedPrintQr && (
-              <div className="grid grid-cols-2 gap-3 mt-4 w-full">
+            <div className="grid grid-cols-2 gap-3 mt-4 w-full">
+              <button
+                onClick={downloadQrPng}
+                className="bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 hover:border-zinc-750 text-white text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                PNG Download
+              </button>
+              <button
+                onClick={printTablePlacard}
+                className="bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Print Placard
+              </button>
+            </div>
+
+            <div className="mt-4 w-full rounded-2xl border border-zinc-900 bg-zinc-950 p-4 text-left">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500">Phone Scan URL</p>
+                  <a
+                    href={activeQrScanUrl}
+                    target="_blank"
+                    className="mt-1 block truncate text-xs font-semibold text-amber-500 hover:underline"
+                  >
+                    {activeQrScanUrl}
+                  </a>
+                </div>
                 <button
-                  onClick={downloadQrPng}
-                  className="bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 hover:border-zinc-750 text-white text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
+                  type="button"
+                  onClick={copyQrUrl}
+                  className="shrink-0 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-[10px] font-bold text-white hover:border-amber-500/50 hover:text-amber-400"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  PNG Download
-                </button>
-                <button
-                  onClick={printTablePlacard}
-                  className="bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Print Placard
+                  <Copy className="inline h-3.5 w-3.5 mr-1" />
+                  {copiedQrUrl ? "Copied" : "Copy"}
                 </button>
               </div>
-            )}
+              {qrBaseWarning && (
+                <p className="mt-2 text-[10px] leading-relaxed text-amber-300/80">
+                  {qrBaseWarning}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 

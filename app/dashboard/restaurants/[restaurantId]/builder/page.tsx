@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { useWorkspace } from "../layout";
 import { getMenus, getMenu, saveMenu, createMenu, Menu, MenuCategory, MenuItem } from "@/lib/firebase/db";
+import { getStructuredMenuTrustIssues } from "@/lib/menu-trust";
 import { storage, isFirebaseConfigured } from "@/lib/firebase/config";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { 
@@ -111,16 +112,24 @@ export default function MenuBuilder() {
     setSaveSuccess(false);
 
     try {
+      const cameFromUpload = Boolean(activeMenu.sourceFileUrl || activeMenu.rawExtractedText || activeMenu.rawDigitizedJson);
+      const trustIssues = cameFromUpload ? getStructuredMenuTrustIssues({ ...activeMenu, categories }) : [];
+      const structuredItemsVerified = !cameFromUpload || trustIssues.length === 0;
+
       await saveMenu(restaurant.id!, activeMenu.id, {
         categories,
-        structuredItemsVerified: true,
+        structuredItemsVerified,
         version: (activeMenu.version || 1) + 1
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
+
+      if (!structuredItemsVerified) {
+        setError(`Saved, but these imported OCR items are still not verified for the live customer menu: ${trustIssues.join(" ")}`);
+      }
       
       // Refresh local active menu properties
-      setActiveMenu(prev => prev ? { ...prev, categories, version: prev.version + 1 } : null);
+      setActiveMenu(prev => prev ? { ...prev, categories, structuredItemsVerified, version: prev.version + 1 } : null);
     } catch (err: any) {
       console.error("Save error:", err);
       setError("Failed to save menu changes.");

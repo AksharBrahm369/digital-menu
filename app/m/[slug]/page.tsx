@@ -34,6 +34,7 @@ import {
   MenuTheme,
   Restaurant
 } from "@/lib/firebase/db";
+import { hasTrustedStructuredItems } from "@/lib/menu-trust";
 
 type FilterKey = "all" | "veg" | "non-veg" | "egg" | "vegan" | "spicy" | "popular" | "available";
 type CustomerMenuItem = MenuItem & { categoryId: string; categoryName: string };
@@ -117,11 +118,17 @@ function resolveItemType(item: Partial<MenuItem> & { isVeg?: boolean }): MenuIte
   return "unknown";
 }
 
+function normalizeLegacyPublishedItemName(name: string) {
+  return name
+    .replace(/\bmachiatto\b/i, "machiato")
+    .replace(/^croissant\s+-\s+/i, "croissants - ");
+}
+
 function normalizeItem(item: Partial<MenuItem> & { isVeg?: boolean }, category: Pick<MenuCategory, "id" | "name">, index = 0): CustomerMenuItem {
   const itemId = item.id || `item_${category.id}_${index}`;
   return {
     id: itemId,
-    name: item.name || "Untitled item",
+    name: normalizeLegacyPublishedItemName(item.name || "Untitled item"),
     description: item.description || "",
     price: Number(item.price) || 0,
     priceLabel: item.priceLabel || "",
@@ -311,16 +318,6 @@ function isSourceImage(menu: Menu | null) {
   return /\.(png|jpe?g|webp|gif|avif)$/i.test(menu.sourceFileName || menu.sourceFileUrl.split("?")[0]);
 }
 
-function hasTrustedStructuredItems(menu: Menu) {
-  if (menu.structuredItemsVerified === false) return false;
-
-  const confidenceNotes = menu.digitizationMetadata?.confidenceNotes || "";
-  if (/auto-digitized from ocr text stream/i.test(confidenceNotes)) return false;
-
-  if (menu.rawExtractedText && menu.structuredItemsVerified !== true) return false;
-  return true;
-}
-
 function MenuSkeleton() {
   return (
     <div className="min-h-screen bg-[#f6ead8] text-[#2c1810]">
@@ -416,6 +413,10 @@ function PublicMenuContent() {
             categoriesSnapshot.length > 0 && itemsSnapshot.length > 0
               ? normalizeSubcollectionCategories(categoriesSnapshot, itemsSnapshot)
               : normalizeCategories(publishedMenu);
+
+          if (!hasTrustedStructuredItems({ ...publishedMenu, categories: finalCategories })) {
+            finalCategories = [];
+          }
         }
 
         setMenu(publishedMenu);

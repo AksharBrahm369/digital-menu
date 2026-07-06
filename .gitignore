@@ -29,6 +29,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+dev-lan.log
+dev-lan.err.log
+cloudflared.log
+cloudflared.err.log
+next-prod.log
+next-prod.err.log
+.qr-public-url
 
 # env files (can opt-in for committing if needed)
 .env*

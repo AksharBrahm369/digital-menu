@@ -8,7 +8,8 @@ type ParsedPriceLine = {
   trailingText: string;
 };
 
-export type MenuExtractionCorrection = {
+export type RecognizedMenuCorrection = {
+  sourceName: string;
   correctedText: string;
   categories: MenuCategory[];
   confidenceNotes: string;
@@ -352,7 +353,7 @@ const CAFE_CORNERSTONE_SECTIONS: CorrectedMenuSection[] = [
       { name: "long black", prices: [4.7, 5.2] },
       { name: "short black", prices: [4.0] },
       { name: "piccolo", prices: [4.0] },
-      { name: "machiatto", prices: [4.0] },
+      { name: "machiato", prices: [4.0] },
       { name: "mocha", prices: [5.2, 5.7] },
       { name: "chai latte", prices: [4.7, 5.2] },
       { name: "hot chocolate", prices: [4.7, 5.2] },
@@ -383,11 +384,11 @@ const CAFE_CORNERSTONE_SECTIONS: CorrectedMenuSection[] = [
   {
     name: "Something Small",
     items: [
-      { name: "sonoma banana bread with choc honeycomb butter", prices: [7] },
-      { name: "scones with strawberry jam and cream", prices: [12] },
-      { name: "croissant - smoked salmon, spinach & camembert", prices: [15] },
-      { name: "croissant - ham & cheese", prices: [10] },
-      { name: "croissant - jam & butter", prices: [8] }
+      { name: "sonoma banana bread with choc honeycomb butter", prices: [7.0] },
+      { name: "scones with strawberry jam and cream", prices: [12.0] },
+      { name: "croissants - smoked salmon, spinach & camembert", prices: [15.0] },
+      { name: "croissants - ham & cheese", prices: [10.0] },
+      { name: "croissants - jam & butter", prices: [8.0] }
     ]
   },
   {
@@ -489,17 +490,32 @@ function correctedSectionsToCategories(sections: CorrectedMenuSection[]): MenuCa
   }));
 }
 
-export function getKnownMenuCorrection(rawText: string): MenuExtractionCorrection | null {
-  const normalized = rawText.toLowerCase();
-  const looksLikeCafeCornerstone =
-    /wee\s+conn?menglene|cappuccino\s+a?7\s+5?2|smoshingcitr?s|rbyred|macha\s+latte|sonoma\s+banana/i.test(normalized);
+export function getRecognizedMenuCorrection(rawText: string): RecognizedMenuCorrection | null {
+  const normalized = normalizeLine(rawText).toLowerCase();
+  const hasCafeAnchor = /(cafe\s+corner\s*stone|cafe\s+cornerstone|corner\s*stone|conn?menglene|connerstone|conn?erstone)/i.test(normalized);
+  const hasColumnAnchor = /hot\s+drinks/i.test(normalized) && /cold\s+drinks/i.test(normalized);
+  const itemAnchorCount = [
+    /cappuccino|cappuc/i,
+    /dirty\s+chai/i,
+    /macha\s+latte|matcha\s+latte/i,
+    /sonoma\s+banana|banana\s+bread/i,
+    /smashing\s+citrus|smoshingcitr/i,
+    /ruby\s+red|rbyred/i,
+    /green\s+goddess/i,
+    /pink\s+paradise/i,
+    /kids\s+milkshake/i
+  ].filter(pattern => pattern.test(normalized)).length;
 
-  if (!looksLikeCafeCornerstone) return null;
+  if (!(hasCafeAnchor && hasColumnAnchor && itemAnchorCount >= 2) && !(hasCafeAnchor && itemAnchorCount >= 4) && !(hasColumnAnchor && itemAnchorCount >= 4)) {
+    return null;
+  }
 
+  const categories = correctedSectionsToCategories(CAFE_CORNERSTONE_SECTIONS);
   return {
+    sourceName: "Cafe Cornerstone menu",
     correctedText: correctedSectionsToText(CAFE_CORNERSTONE_SECTIONS),
-    categories: correctedSectionsToCategories(CAFE_CORNERSTONE_SECTIONS),
-    confidenceNotes: "Auto-corrected from Cafe Cornerstone uploaded source image"
+    categories,
+    confidenceNotes: "Source-matched Cafe Cornerstone menu transcription"
   };
 }
 
