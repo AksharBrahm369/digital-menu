@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { getRestaurants, Restaurant } from "@/lib/firebase/db";
+import { isFirebaseConfigured } from "@/lib/firebase/config";
 import { 
   Plus, 
   QrCode, 
@@ -22,6 +23,25 @@ import {
   Eye,
   TrendingUp
 } from "lucide-react";
+
+async function getDashboardRestaurants(user: { uid: string; getIdToken?: () => Promise<string> }) {
+  if (!isFirebaseConfigured()) {
+    return getRestaurants(user.uid);
+  }
+
+  const token = await user.getIdToken?.();
+  const response = await fetch("/api/restaurants", {
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Could not load restaurants.");
+  }
+
+  return (payload.data || []) as Restaurant[];
+}
 
 export default function Dashboard() {
   const { user, loading, signOut } = useAuth();
@@ -41,15 +61,17 @@ export default function Dashboard() {
     const fetchRestaurants = async () => {
       try {
         setError("");
-        const list = await getRestaurants(user.uid);
+        const list = await getDashboardRestaurants(user);
         setRestaurants(list);
       } catch (err: any) {
         console.error("Error fetching restaurants:", err);
         const message = err.message || "";
-        if (message.toLowerCase().includes("mock database")) {
+        if (message.toLowerCase().includes("firebase admin")) {
+          setError("Vercel is missing Firebase Admin environment variables. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY, then redeploy.");
+        } else if (message.toLowerCase().includes("mock database")) {
           setError("This deployment is still using the local mock database. Vercel cannot persist that data, so configure Firebase and set NEXT_PUBLIC_MOCK_DATABASE=false.");
         } else if (message.toLowerCase().includes("permission")) {
-          setError("Firestore permission denied while loading restaurants. Publish the updated firestore.rules file in Firebase Console.");
+          setError("Restaurant access was denied. Sign out and sign in again, or verify your Firebase Admin environment variables in Vercel.");
         } else {
           setError("Could not load restaurants. " + message);
         }

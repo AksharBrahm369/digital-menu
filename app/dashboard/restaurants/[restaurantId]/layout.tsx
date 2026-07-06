@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { getRestaurant, Restaurant } from "@/lib/firebase/db";
+import { isFirebaseConfigured } from "@/lib/firebase/config";
 import { 
   ArrowLeft, 
   ChefHat, 
@@ -30,6 +31,28 @@ const WorkspaceContext = createContext<WorkspaceContextType>({
   refreshRestaurant: async () => {},
 });
 
+async function getWorkspaceRestaurant(
+  restaurantId: string,
+  user: { getIdToken?: () => Promise<string> }
+) {
+  if (!isFirebaseConfigured()) {
+    return getRestaurant(restaurantId);
+  }
+
+  const token = await user.getIdToken?.();
+  const response = await fetch(`/api/restaurants?id=${encodeURIComponent(restaurantId)}`, {
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Could not load restaurant workspace.");
+  }
+
+  return payload.data as Restaurant | null;
+}
+
 export const useWorkspace = () => useContext(WorkspaceContext);
 
 export default function RestaurantLayout({ children }: { children: React.ReactNode }) {
@@ -37,13 +60,17 @@ export default function RestaurantLayout({ children }: { children: React.ReactNo
   const { user, loading: authLoading } = useAuth();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   
   const router = useRouter();
   const pathname = usePathname();
 
   const fetchRestaurantDetails = async () => {
+    if (!user) return;
+
     try {
-      const details = await getRestaurant(restaurantId);
+      setError("");
+      const details = await getWorkspaceRestaurant(restaurantId, user);
       if (details) {
         setRestaurant(details);
       } else {
@@ -52,6 +79,8 @@ export default function RestaurantLayout({ children }: { children: React.ReactNo
       }
     } catch (error) {
       console.error("Error loading workspace restaurant:", error);
+      const message = error instanceof Error ? error.message : "Could not load restaurant workspace.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -71,6 +100,16 @@ export default function RestaurantLayout({ children }: { children: React.ReactNo
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black px-6 py-12 text-white">
+        <div className="mx-auto max-w-2xl rounded-2xl border border-rose-500/30 bg-rose-500/10 p-5 text-sm font-medium text-rose-300">
+          {error}
+        </div>
       </div>
     );
   }

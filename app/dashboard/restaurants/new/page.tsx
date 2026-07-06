@@ -19,6 +19,28 @@ import {
   AlertTriangle
 } from "lucide-react";
 
+async function createRestaurantViaServer(
+  user: { getIdToken?: () => Promise<string> },
+  data: Record<string, string>
+) {
+  const token = await user.getIdToken?.();
+  const response = await fetch("/api/restaurants", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(data),
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Could not create restaurant.");
+  }
+
+  return payload.data;
+}
+
 export default function NewRestaurant() {
   const { user, loading } = useAuth();
   const [name, setName] = useState("");
@@ -88,7 +110,7 @@ export default function NewRestaurant() {
 
       // 3. Save restaurant with generated ID using our Firestore helper logic
       // Note: we write the restaurant details and the owner membership record
-      const createdRestaurant = await createRestaurant(user.uid, {
+      const restaurantPayload = {
         id: restaurantId,
         name,
         slug,
@@ -98,17 +120,22 @@ export default function NewRestaurant() {
         phone,
         whatsapp,
         address,
-      });
+      };
+      const createdRestaurant = isFirebaseConfigured()
+        ? await createRestaurantViaServer(user, restaurantPayload)
+        : await createRestaurant(user.uid, restaurantPayload);
 
       // 4. Redirect straight into the created workspace so the owner can continue setup.
       router.push(`/dashboard/restaurants/${createdRestaurant?.id || restaurantId}`);
     } catch (err: any) {
       console.error("Error creating restaurant:", err);
       const message = err.message || "";
-      if (message.toLowerCase().includes("mock database")) {
+      if (message.toLowerCase().includes("firebase admin")) {
+        setError("Failed to create restaurant. Vercel is missing Firebase Admin environment variables. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY, then redeploy.");
+      } else if (message.toLowerCase().includes("mock database")) {
         setError("Failed to create restaurant. Your Vercel deployment is using the local mock database, which cannot persist data. Set NEXT_PUBLIC_MOCK_DATABASE=false and configure Firebase environment variables in Vercel.");
       } else if (message.toLowerCase().includes("permission")) {
-        setError("Failed to create restaurant. Firestore permission denied. Publish the updated firestore.rules file in Firebase Console, then deploy again.");
+        setError("Failed to create restaurant. Restaurant access was denied. Sign out and sign in again, or verify Firebase Admin environment variables in Vercel.");
       } else {
         setError("Failed to create restaurant. " + message);
       }
