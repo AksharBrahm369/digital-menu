@@ -824,20 +824,77 @@ export async function getMenus(restaurantId: string): Promise<Menu[]> {
   }
 
   const dbClient = getDbClient();
-  const { data, error } = await dbClient
+  const { data: menus, error } = await dbClient
     .from("menus")
     .select("id, name, status, version, theme, created_at, updated_at")
     .eq("restaurant_id", restaurantId)
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
+  if (!menus || menus.length === 0) return [];
 
-  return (data || []).map((m: any) => ({
+  const menuIds = menus.map(m => m.id);
+  
+  const [categoriesRes, itemsRes] = await Promise.all([
+    dbClient.from("menu_categories").select("*").in("menu_id", menuIds).order("sort_order", { ascending: true }),
+    dbClient.from("menu_items").select("*").in("menu_id", menuIds).order("sort_order", { ascending: true })
+  ]);
+
+  const dbCategories = categoriesRes.data || [];
+  const dbItems = itemsRes.data || [];
+
+  const itemsByCat: Record<string, MenuItem[]> = {};
+  dbItems.forEach((item: any) => {
+    if (!itemsByCat[item.category_id]) {
+      itemsByCat[item.category_id] = [];
+    }
+    itemsByCat[item.category_id].push({
+      id: item.id,
+      name: item.name,
+      description: item.description || "",
+      price: Number(item.price),
+      priceLabel: item.price_label || undefined,
+      priceOptions: item.price_options || [],
+      variants: item.variants || [],
+      confidence: item.confidence as any,
+      subcategory: item.subcategory,
+      dietaryTag: item.dietary_tag as any,
+      specialTag: item.special_tag,
+      imageUrl: item.image_url || undefined,
+      image: item.image_url || undefined,
+      allergens: item.allergens || [],
+      tags: item.tags || [],
+      isAvailable: item.is_available,
+      isActive: item.is_available,
+      isFeatured: item.is_featured,
+      isPopular: item.is_popular,
+      type: item.type as any,
+      spiceLevel: item.spice_level,
+      sortOrder: item.sort_order
+    });
+  });
+
+  const categoriesByMenu: Record<string, MenuCategory[]> = {};
+  dbCategories.forEach((cat: any) => {
+    if (!categoriesByMenu[cat.menu_id]) {
+      categoriesByMenu[cat.menu_id] = [];
+    }
+    categoriesByMenu[cat.menu_id].push({
+      id: cat.id,
+      name: cat.name,
+      description: cat.description || undefined,
+      sortOrder: cat.sort_order,
+      isActive: cat.is_active,
+      items: itemsByCat[cat.id] || []
+    });
+  });
+
+  return menus.map((m: any) => ({
     id: m.id,
     name: m.name,
     status: m.status as any,
     version: m.version,
-    categories: [],
+    categories: categoriesByMenu[m.id] || [],
     theme: m.theme,
     createdAt: m.created_at,
     updatedAt: m.updated_at
