@@ -27,6 +27,7 @@ export default function Dashboard() {
   const { user, loading, signOut } = useAuth();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [error, setError] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -39,10 +40,19 @@ export default function Dashboard() {
 
     const fetchRestaurants = async () => {
       try {
+        setError("");
         const list = await getRestaurants(user.uid);
         setRestaurants(list);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error fetching restaurants:", err);
+        const message = err.message || "";
+        if (message.toLowerCase().includes("mock database")) {
+          setError("This deployment is still using the local mock database. Vercel cannot persist that data, so configure Firebase and set NEXT_PUBLIC_MOCK_DATABASE=false.");
+        } else if (message.toLowerCase().includes("permission")) {
+          setError("Firestore permission denied while loading restaurants. Publish the updated firestore.rules file in Firebase Console.");
+        } else {
+          setError("Could not load restaurants. " + message);
+        }
       } finally {
         setFetching(false);
       }
@@ -137,12 +147,18 @@ export default function Dashboard() {
           </Link>
         </div>
 
+        {error && (
+          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-medium leading-relaxed text-rose-300">
+            {error}
+          </div>
+        )}
+
         {/* Grid listing */}
         {fetching ? (
           <div className="flex justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
           </div>
-        ) : restaurants.length === 0 ? (
+        ) : error ? null : restaurants.length === 0 ? (
           <div className="border border-dashed border-zinc-900 bg-zinc-950/30 rounded-3xl p-16 text-center space-y-4 max-w-xl mx-auto">
             <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-500">
               <ChefHat className="w-6 h-6" />

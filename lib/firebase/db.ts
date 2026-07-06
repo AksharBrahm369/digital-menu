@@ -14,7 +14,7 @@ import {
   increment,
   writeBatch
 } from "firebase/firestore";
-import { db, isFirebaseConfigured } from "./config";
+import { db, isMockDatabaseEnabled } from "./config";
 
 // --- TypeScript Interfaces ---
 
@@ -189,6 +189,14 @@ const isPublicRestaurantStatus = (status?: Restaurant["status"]) => {
   return status === "active" || status === "published";
 };
 
+const parseMockResponse = async (res: Response) => {
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(payload.error || "Local mock database request failed.");
+  }
+  return payload;
+};
+
 const fetchMock = async (action: string, collectionName: string, id?: string, data?: any, extra: Record<string, any> = {}) => {
   if (typeof window === "undefined") {
     // Return empty on SSR if fetch is not available in mock mode
@@ -197,7 +205,7 @@ const fetchMock = async (action: string, collectionName: string, id?: string, da
   
   if (action === "GET_DOC") {
     const res = await fetch(`/api/mock-db?action=getDoc&collection=${collectionName}&id=${id}`);
-    return res.json();
+    return parseMockResponse(res);
   }
   if (action === "GET_DOCS") {
     let queryStr = `/api/mock-db?action=getDocs&collection=${collectionName}`;
@@ -205,7 +213,7 @@ const fetchMock = async (action: string, collectionName: string, id?: string, da
       queryStr += `&${k}=${encodeURIComponent(v)}`;
     });
     const res = await fetch(queryStr);
-    return res.json();
+    return parseMockResponse(res);
   }
   
   const res = await fetch("/api/mock-db", {
@@ -213,7 +221,7 @@ const fetchMock = async (action: string, collectionName: string, id?: string, da
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, collection: collectionName, id, data, ...extra })
   });
-  return res.json();
+  return parseMockResponse(res);
 };
 
 async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?: string) {
@@ -224,7 +232,7 @@ async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?
   while (true) {
     let matches: Restaurant[] = [];
 
-    if (!isFirebaseConfigured()) {
+    if (isMockDatabaseEnabled()) {
       const res = await fetchMock("GET_DOCS", "restaurants", undefined, undefined, { slug: candidate });
       matches = res.data || [];
     } else {
@@ -245,7 +253,7 @@ async function getUniqueRestaurantSlug(desiredSlug: string, currentRestaurantId?
 
 // User Profile
 export async function createUserProfile(uid: string, data: Partial<UserProfile>) {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("setDoc", "users", uid, data);
     return res.data;
   }
@@ -264,7 +272,7 @@ export async function createUserProfile(uid: string, data: Partial<UserProfile>)
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOC", "users", uid);
     return res.data;
   }
@@ -277,7 +285,7 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
 export async function createRestaurant(ownerId: string, data: Omit<Restaurant, "ownerId" | "createdAt" | "updatedAt" | "status">) {
   const uniqueSlug = await getUniqueRestaurantSlug(data.slug || data.name, data.id);
 
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("createRestaurant", "restaurants", undefined, { ...data, slug: uniqueSlug }, { uid: ownerId });
     return res.data;
   }
@@ -312,7 +320,7 @@ export async function createRestaurant(ownerId: string, data: Omit<Restaurant, "
 }
 
 export async function getRestaurant(restaurantId: string): Promise<Restaurant | null> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOC", "restaurants", restaurantId);
     return res.data;
   }
@@ -322,18 +330,19 @@ export async function getRestaurant(restaurantId: string): Promise<Restaurant | 
 }
 
 export async function getRestaurants(ownerId: string): Promise<Restaurant[]> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOCS", "restaurants", undefined, undefined, { ownerId });
-    return res.data || [];
+    return sortRestaurantsByUpdatedDate((res.data || []) as Restaurant[]);
   }
 
-  const q = query(collection(db, "restaurants"), where("ownerId", "==", ownerId), orderBy("createdAt", "desc"));
+  const q = query(collection(db, "restaurants"), where("ownerId", "==", ownerId));
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Restaurant));
+  const restaurants = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Restaurant));
+  return sortRestaurantsByUpdatedDate(restaurants);
 }
 
 export async function getRestaurantBySlug(slug: string): Promise<Restaurant | null> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOCS", "restaurants", undefined, undefined, { slug });
     const restaurants = sortRestaurantsByUpdatedDate((res.data || []) as Restaurant[]);
     return restaurants[0] || null;
@@ -347,7 +356,7 @@ export async function getRestaurantBySlug(slug: string): Promise<Restaurant | nu
 }
 
 export async function updateRestaurant(restaurantId: string, data: Partial<Restaurant>) {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     await fetchMock("updateDoc", "restaurants", restaurantId, data);
     return;
   }
@@ -361,7 +370,7 @@ export async function updateRestaurant(restaurantId: string, data: Partial<Resta
 
 // Uploads (Menu PDF/Image Upload Logs)
 export async function addUpload(restaurantId: string, uploadData: Omit<MenuUpload, "createdAt" | "extractionStatus">) {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("addDoc", "uploads", undefined, {
       ...uploadData,
       restaurantId,
@@ -380,7 +389,7 @@ export async function addUpload(restaurantId: string, uploadData: Omit<MenuUploa
 }
 
 export async function getUploads(restaurantId: string): Promise<MenuUpload[]> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOCS", "uploads", undefined, undefined, { restaurantId });
     return res.data || [];
   }
@@ -396,7 +405,7 @@ export async function updateUploadStatus(
   status: MenuUpload["extractionStatus"],
   extractedJson?: string
 ) {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     await fetchMock("updateDoc", "uploads", uploadId, { extractionStatus: status, extractedJson });
     return;
   }
@@ -411,7 +420,7 @@ export async function updateUploadStatus(
 
 // Menus
 export async function saveMenu(restaurantId: string, menuId: string, menuData: Partial<Menu>) {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     await fetchMock("setDoc", "menus", menuId, { ...menuData, restaurantId });
     return;
   }
@@ -508,7 +517,7 @@ export async function createMenu(restaurantId: string, name: string) {
     cardStyle: "3d-tilt",
   };
 
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("addDoc", "menus", undefined, {
       name,
       restaurantId,
@@ -534,7 +543,7 @@ export async function createMenu(restaurantId: string, name: string) {
 }
 
 export async function getMenus(restaurantId: string): Promise<Menu[]> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOCS", "menus", undefined, undefined, { restaurantId });
     return res.data || [];
   }
@@ -545,7 +554,7 @@ export async function getMenus(restaurantId: string): Promise<Menu[]> {
 }
 
 export async function getMenu(restaurantId: string, menuId: string): Promise<Menu | null> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOC", "menus", menuId);
     return res.data;
   }
@@ -570,7 +579,7 @@ export async function getPublishedMenuForRestaurant(restaurant: Restaurant): Pro
     }
   }
 
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOCS", "menus", undefined, undefined, { restaurantId: restaurant.id });
     const publishedMenus = ((res.data || []) as Menu[]).filter(menu => menu.status === "published");
     return sortMenusByPublishDate(publishedMenus)[0] || null;
@@ -587,7 +596,7 @@ export async function getPublishedMenuForRestaurant(restaurant: Restaurant): Pro
 }
 
 export async function getMenuCategoriesSubcollection(restaurantId: string, menuId: string): Promise<any[]> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     return [];
   }
   try {
@@ -601,7 +610,7 @@ export async function getMenuCategoriesSubcollection(restaurantId: string, menuI
 }
 
 export async function getMenuItemsSubcollection(restaurantId: string, menuId: string): Promise<any[]> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     return [];
   }
   try {
@@ -615,7 +624,7 @@ export async function getMenuItemsSubcollection(restaurantId: string, menuId: st
 }
 
 export async function getActiveThemeForRestaurant(restaurantId: string): Promise<MenuTheme | null> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     return null;
   }
   try {
@@ -632,7 +641,7 @@ export async function getActiveThemeForRestaurant(restaurantId: string): Promise
 }
 
 export async function publishMenu(restaurantId: string, menuId: string) {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const restaurant = await getRestaurant(restaurantId);
     const slug = restaurant
       ? await getUniqueRestaurantSlug(restaurant.slug || restaurant.name, restaurantId)
@@ -677,7 +686,7 @@ export async function publishMenu(restaurantId: string, menuId: string) {
 
 // QR Code and Table placard tags
 export async function createQrCode(restaurantId: string, name: string): Promise<QrCode & { id: string }> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("addDoc", "qrs", undefined, { restaurantId, name, scanCount: 0 });
     return res.data;
   }
@@ -693,7 +702,7 @@ export async function createQrCode(restaurantId: string, name: string): Promise<
 }
 
 export async function getRestaurantQrs(restaurantId: string): Promise<QrCode[]> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOCS", "qrs", undefined, undefined, { restaurantId });
     return res.data || [];
   }
@@ -704,7 +713,7 @@ export async function getRestaurantQrs(restaurantId: string): Promise<QrCode[]> 
 }
 
 export async function getQrCode(qrId: string): Promise<QrCode | null> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOC", "qrs", qrId);
     return res.data;
   }
@@ -715,7 +724,7 @@ export async function getQrCode(qrId: string): Promise<QrCode | null> {
 }
 
 export async function recordQrScan(qrId: string, restaurantId: string, metadata: { userAgent?: string; referer?: string }) {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     await fetchMock("recordScan", "qrs", qrId, metadata, { restaurantId });
     return;
   }
@@ -738,7 +747,7 @@ export async function recordQrScan(qrId: string, restaurantId: string, metadata:
 }
 
 export async function getScanLogs(restaurantId: string, limitCount = 100): Promise<ScanLog[]> {
-  if (!isFirebaseConfigured()) {
+  if (isMockDatabaseEnabled()) {
     const res = await fetchMock("GET_DOCS", "scans", undefined, undefined, { restaurantId });
     return res.data ? res.data.slice(0, limitCount) : [];
   }

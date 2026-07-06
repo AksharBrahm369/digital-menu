@@ -3,6 +3,12 @@ import fs from "fs";
 import path from "path";
 
 const MOCK_DB_FILE = path.join(process.cwd(), "mock_db.json");
+const MOCK_DB_PRODUCTION_ERROR =
+  "The local mock database cannot be used on Vercel/production because file writes are not persistent. Configure Firebase environment variables and set NEXT_PUBLIC_MOCK_DATABASE=false.";
+
+function isMockDatabaseAllowed() {
+  return process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ALLOW_MOCK_DATABASE_IN_PRODUCTION === "true";
+}
 
 // Helper: Read the mock database from local file
 function readDb() {
@@ -38,10 +44,15 @@ function writeDb(data: any) {
     fs.writeFileSync(MOCK_DB_FILE, JSON.stringify(data, null, 2), "utf-8");
   } catch (e) {
     console.error("Failed to write mock database file:", e);
+    throw e;
   }
 }
 
 export async function GET(request: NextRequest) {
+  if (!isMockDatabaseAllowed()) {
+    return NextResponse.json({ error: MOCK_DB_PRODUCTION_ERROR }, { status: 500 });
+  }
+
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action");
   const collection = searchParams.get("collection");
@@ -107,6 +118,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isMockDatabaseAllowed()) {
+      return NextResponse.json({ error: MOCK_DB_PRODUCTION_ERROR }, { status: 500 });
+    }
+
     const body = await request.json();
     const { action, collection, id, data, restaurantId, uid } = body;
 

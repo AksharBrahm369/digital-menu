@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { 
+import {
   User, 
   onIdTokenChanged, 
   signOut as firebaseSignOut,
@@ -9,7 +9,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile
 } from "firebase/auth";
-import { auth, isFirebaseConfigured } from "./config";
+import { auth, isFirebaseConfigured, isMockDatabaseEnabled } from "./config";
 import { createUserProfile } from "./db";
 
 interface AuthContextType {
@@ -32,10 +32,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const configured = isFirebaseConfigured();
+  const mockEnabled = isMockDatabaseEnabled();
 
   // Listen to Auth State
   useEffect(() => {
     if (!configured) {
+      if (!mockEnabled) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
       // Mock Auth Initialization
       const savedUser = localStorage.getItem("menu3d_mock_user");
       if (savedUser) {
@@ -64,10 +71,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, [configured]);
+  }, [configured, mockEnabled]);
 
   const signIn = async (email: string, password: string) => {
     if (!configured) {
+      if (!mockEnabled) {
+        throw new Error("Firebase is not configured for this deployment. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy.");
+      }
+
       // Simulate validation
       if (!email.includes("@") || password.length < 6) {
         throw new Error("Invalid email format or password too short (min 6 chars).");
@@ -99,6 +110,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signUp = async (email: string, password: string, fullName: string) => {
     if (!configured) {
+      if (!mockEnabled) {
+        throw new Error("Firebase is not configured for this deployment. Add the NEXT_PUBLIC_FIREBASE_* environment variables in Vercel and redeploy.");
+      }
+
       if (!email.includes("@") || password.length < 6) {
         throw new Error("Invalid email format or password too short.");
       }
@@ -149,7 +164,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     if (!configured) {
-      localStorage.removeItem("menu3d_mock_user");
+      if (mockEnabled) {
+        localStorage.removeItem("menu3d_mock_user");
+      }
       setUser(null);
       await fetch("/api/auth/session", {
         method: "POST",

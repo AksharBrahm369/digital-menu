@@ -32,15 +32,21 @@ service cloud.firestore {
     match /restaurants/{restaurantId} {
       // Anyone can read restaurant info (critical for mobile customer views)
       allow read: if true;
-      // Any authenticated user can create a restaurant profile
-      allow create: if isSignedIn();
+      // Any authenticated user can create their own restaurant profile
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       // Only owners/admins can update or delete
       allow update, delete: if hasRole(restaurantId, ['owner', 'admin']);
 
       // Members Subcollection
       match /members/{memberUid} {
         allow read: if isSignedIn() && (request.auth.uid == memberUid || isMember(restaurantId));
-        allow write: if hasRole(restaurantId, ['owner', 'admin']);
+        allow create: if isSignedIn()
+          && request.auth.uid == memberUid
+          && request.resource.data.uid == memberUid
+          && request.resource.data.role == 'owner'
+          && existsAfter(/databases/$(database)/documents/restaurants/$(restaurantId))
+          && getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)).data.ownerId == request.auth.uid;
+        allow update, delete: if hasRole(restaurantId, ['owner', 'admin']);
       }
 
       // Uploads Subcollection

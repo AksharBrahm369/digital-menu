@@ -6,6 +6,10 @@ import path from "path";
 
 const MOCK_DB_FILE = path.join(process.cwd(), "mock_db.json");
 
+function isMockDatabaseAllowed() {
+  return process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ALLOW_MOCK_DATABASE_IN_PRODUCTION === "true";
+}
+
 function getMockDb() {
   if (!fs.existsSync(MOCK_DB_FILE)) return null;
   try {
@@ -30,8 +34,10 @@ export async function GET(
   try {
     const { qrId } = await params;
 
-    // Detect if mock database mode is enabled
-    const isMock = process.env.NEXT_PUBLIC_MOCK_DATABASE === "true" || !process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+    // Detect if mock database mode is enabled. File-backed mock data is not persistent on Vercel.
+    const isMock =
+      isMockDatabaseAllowed() &&
+      (process.env.NEXT_PUBLIC_MOCK_DATABASE === "true" || !process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
 
     if (isMock) {
       const db = getMockDb();

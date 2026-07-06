@@ -88,7 +88,7 @@ export default function NewRestaurant() {
 
       // 3. Save restaurant with generated ID using our Firestore helper logic
       // Note: we write the restaurant details and the owner membership record
-      await createRestaurant(user.uid, {
+      const createdRestaurant = await createRestaurant(user.uid, {
         id: restaurantId,
         name,
         slug,
@@ -100,11 +100,18 @@ export default function NewRestaurant() {
         address,
       });
 
-      // 4. Redirect to dashboard
-      router.push("/dashboard");
+      // 4. Redirect straight into the created workspace so the owner can continue setup.
+      router.push(`/dashboard/restaurants/${createdRestaurant?.id || restaurantId}`);
     } catch (err: any) {
       console.error("Error creating restaurant:", err);
-      setError("Failed to create restaurant. " + (err.message || ""));
+      const message = err.message || "";
+      if (message.toLowerCase().includes("mock database")) {
+        setError("Failed to create restaurant. Your Vercel deployment is using the local mock database, which cannot persist data. Set NEXT_PUBLIC_MOCK_DATABASE=false and configure Firebase environment variables in Vercel.");
+      } else if (message.toLowerCase().includes("permission")) {
+        setError("Failed to create restaurant. Firestore permission denied. Publish the updated firestore.rules file in Firebase Console, then deploy again.");
+      } else {
+        setError("Failed to create restaurant. " + message);
+      }
       setSubmitting(false);
     }
   };

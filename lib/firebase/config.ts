@@ -20,11 +20,35 @@ export const db = getFirestore(app);
 export const storage = getStorage(app);
 export { app };
 
-export const isFirebaseConfigured = () => {
-  if (process.env.NEXT_PUBLIC_MOCK_DATABASE === "true") {
-    return false;
-  }
+export const hasFirebaseClientConfig = () => {
   const key = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-  return !!key && key !== "dummy-api-key" && key !== "";
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID;
+
+  return Boolean(
+    key &&
+      key !== "dummy-api-key" &&
+      key !== "your-api-key" &&
+      projectId &&
+      projectId !== "dummy-project-id" &&
+      projectId !== "your-project-id" &&
+      appId &&
+      appId !== "1:1234567890:web:1234567890" &&
+      appId !== "your-app-id"
+  );
 };
 
+export const isMockDatabaseEnabled = () => {
+  const mockRequested = process.env.NEXT_PUBLIC_MOCK_DATABASE === "true";
+  const productionMockAllowed = process.env.NEXT_PUBLIC_ALLOW_MOCK_DATABASE_IN_PRODUCTION === "true";
+
+  if (process.env.NODE_ENV === "production" && !productionMockAllowed) {
+    return false;
+  }
+
+  return mockRequested || !hasFirebaseClientConfig();
+};
+
+export const isFirebaseConfigured = () => {
+  return hasFirebaseClientConfig() && !isMockDatabaseEnabled();
+};
