@@ -25,6 +25,15 @@ import {
   Square
 } from "lucide-react";
 
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function MenuBuilder() {
   const { restaurant } = useWorkspace();
   const searchParams = useSearchParams();
@@ -48,13 +57,14 @@ export default function MenuBuilder() {
 
   // Common Allergens checklist
   const COMMON_ALLERGENS = ["gluten", "dairy", "eggs", "nuts", "soy", "fish", "shellfish"];
-
-  if (!restaurant) return null;
+  const restaurantId = restaurant?.id;
 
   // 1. Initial Load: Retrieve menus
   const loadMenus = async () => {
+    if (!restaurantId) return;
+
     try {
-      const menuList = await getMenus(restaurant.id!);
+      const menuList = await getMenus(restaurantId);
       setMenus(menuList);
       
       // Determine which menu ID to load
@@ -64,7 +74,7 @@ export default function MenuBuilder() {
       }
 
       if (targetMenuId) {
-        const menuDetails = await getMenu(restaurant.id!, targetMenuId);
+        const menuDetails = await getMenu(restaurantId, targetMenuId);
         if (menuDetails) {
           setActiveMenu(menuDetails);
           setCategories(menuDetails.categories || []);
@@ -76,8 +86,8 @@ export default function MenuBuilder() {
         }
       } else {
         // If no menu exists, create a default one
-        const newMenuId = await createMenu(restaurant.id!, "Default Menu");
-        router.replace(`/dashboard/restaurants/${restaurant.id}/builder?menuId=${newMenuId}`);
+        const newMenuId = await createMenu(restaurantId, "Default Menu");
+        router.replace(`/dashboard/restaurants/${restaurantId}/builder?menuId=${newMenuId}`);
       }
     } catch (err: any) {
       console.error("Error initializing menu builder:", err);
@@ -89,7 +99,9 @@ export default function MenuBuilder() {
 
   useEffect(() => {
     loadMenus();
-  }, [restaurant.id, searchParams]);
+  }, [restaurantId, searchParams]);
+
+  if (!restaurant || !restaurantId) return null;
 
   // Handle saving the full categories structure to firestore
   const handleSaveMenu = async () => {
@@ -101,6 +113,7 @@ export default function MenuBuilder() {
     try {
       await saveMenu(restaurant.id!, activeMenu.id, {
         categories,
+        structuredItemsVerified: true,
         version: (activeMenu.version || 1) + 1
       });
       setSaveSuccess(true);
@@ -214,8 +227,7 @@ export default function MenuBuilder() {
         const uploadResult = await uploadBytes(imageRef, file);
         downloadUrl = await getDownloadURL(uploadResult.ref);
       } else {
-        // Mock upload: use local Object URL
-        downloadUrl = URL.createObjectURL(file);
+        downloadUrl = await fileToDataUrl(file);
       }
       
       handleUpdateItemDetails({ image: downloadUrl });
@@ -463,16 +475,18 @@ export default function MenuBuilder() {
                     onChange={(e) => handleUpdateItemDetails({ type: e.target.value as any })}
                     className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-amber-500 transition-all"
                   >
+                    <option value="unknown">Not specified</option>
                     <option value="veg">Vegetarian (Veg)</option>
                     <option value="non-veg">Non-Vegetarian (Non-Veg)</option>
                     <option value="egg">Contains Egg</option>
+                    <option value="vegan">Vegan</option>
                   </select>
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-zinc-300">Spice Intensity</label>
                   <select
-                    value={activeItem.spiceLevel}
+                    value={activeItem.spiceLevel ?? 0}
                     onChange={(e) => handleUpdateItemDetails({ spiceLevel: parseInt(e.target.value) || 0 })}
                     className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-2.5 px-4 text-xs text-white focus:outline-none focus:border-amber-500 transition-all"
                   >

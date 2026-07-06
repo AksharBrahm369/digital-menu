@@ -51,14 +51,15 @@ export default function RestaurantOverview() {
   if (!restaurant) return null;
 
   const totalScans = qrs.reduce((sum, item) => sum + item.scanCount, 0);
-  const activeMenu = menus.find(m => m.id === restaurant.activeMenuId);
+  const publishedMenuId = restaurant.currentPublishedMenuId || restaurant.activeMenuId;
+  const activeMenu = menus.find(m => m.id === publishedMenuId);
   const totalMenus = menus.length;
   
   // Calculate completion steps
   const step1Done = totalMenus > 0;
-  const step2Done = menus.some(m => m.categories && m.categories.length > 0);
+  const step2Done = menus.some(m => Boolean(m.sourceFileUrl) || (m.categories && m.categories.length > 0));
   const step3Done = menus.some(m => m.theme && m.theme.theme !== "classic");
-  const step4Done = restaurant.activeMenuId !== undefined && restaurant.activeMenuId !== "";
+  const step4Done = publishedMenuId !== undefined && publishedMenuId !== "";
 
   const stats = [
     { name: "Active Digital Menu", value: activeMenu ? activeMenu.name : "None Published", subtext: activeMenu ? `v${activeMenu.version}` : "Draft only", icon: Layers, color: "text-amber-500 bg-amber-500/10" },

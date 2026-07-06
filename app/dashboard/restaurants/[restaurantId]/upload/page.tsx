@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useWorkspace } from "../layout";
 import { storage, isFirebaseConfigured } from "@/lib/firebase/config";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { addUpload, updateUploadStatus, createMenu, saveMenu, getMenus, MenuUpload } from "@/lib/firebase/db";
+import { addUpload, updateUploadStatus, createMenu, saveMenu, MenuCategory } from "@/lib/firebase/db";
+import { parseDigitizedMenuJson, type DigitizedMenuImport } from "@/lib/menu-digitization";
+import { countMenuItems, parseMenuTextToCategories } from "@/lib/menu-extraction";
 import { 
   Upload, 
   FileText, 
@@ -16,368 +18,72 @@ import {
   ArrowRight,
   Flame,
   Leaf,
-  Plus
+  RefreshCw
 } from "lucide-react";
 
-// Mock extracted categories & items matching the user's uploaded print menu images (Waffles & general foods)
-const MOCK_EXTRACTED_MENU = [
-  {
-    id: "cat-waffles",
-    name: "Waffle Stick",
-    description: "Crispy, hot waffle sticks loaded with premium chocolates and sweet toppings.",
-    items: [
-      {
-        id: "waffle-1",
-        name: "White Fantasy Waffle",
-        description: "Fresh hot waffle stick smothered in premium sweet white chocolate sauce and powdered sugar.",
-        price: 70.00,
-        allergens: ["dairy", "gluten"],
-        tags: ["Sweet Tooth"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "waffle-2",
-        name: "Dark Chocolate Waffle",
-        description: "Warm waffle stick loaded with rich melted dark Belgian chocolate drizzle.",
-        price: 70.00,
-        allergens: ["dairy", "gluten"],
-        tags: ["Best Seller"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "waffle-3",
-        name: "Oreo Chocolate Waffle",
-        description: "Decadent waffle stick topped with crushed Oreo cookies, white chocolate cream, and dark fudge.",
-        price: 80.00,
-        allergens: ["dairy", "gluten"],
-        tags: ["Kids Favorite"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "waffle-4",
-        name: "Kitkat Waffle",
-        description: "Golden waffle stick layered with chocolate fudge and heaps of crushed crispy Kitkat chunks.",
-        price: 80.00,
-        allergens: ["dairy", "gluten"],
-        tags: ["Crispy Treat"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "waffle-5",
-        name: "Naughty Nutella Waffle",
-        description: "Classic waffle stick generously spread with rich hazelnut Nutella paste and roasted nuts.",
-        price: 80.00,
-        allergens: ["dairy", "gluten", "nuts"],
-        tags: ["Staff Pick"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "waffle-6",
-        name: "Black & White Waffle",
-        description: "The best of both worlds: half sweet white chocolate and half rich dark chocolate glaze.",
-        price: 80.00,
-        allergens: ["dairy", "gluten"],
-        tags: [],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "waffle-7",
-        name: "Coffee Bite Waffle",
-        description: "Warm waffle stick infused with mocha espresso fudge and a pinch of roasted coffee dust.",
-        price: 80.00,
-        allergens: ["dairy", "gluten"],
-        tags: [],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      }
-    ]
-  },
-  {
-    id: "cat-1",
-    name: "Menu and Prices",
-    description: "Our core selection of gourmet salads, sandwiches, paninis, and mains.",
-    items: [
-      {
-        id: "item-1",
-        name: "Grilled Chicken Caesar Salad",
-        description: "Crispy romaine lettuce tossed in creamy Caesar dressing, topped with fire-grilled chicken breast, garlic croutons, and shaved parmesan.",
-        price: 12.99,
-        allergens: ["dairy", "gluten"],
-        tags: ["Healthy Option"],
-        isAvailable: true,
-        type: "non-veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-2",
-        name: "Classic Club Sandwich",
-        description: "Triple-decker sandwich layered with warm roasted turkey, crispy bacon, fresh lettuce, sliced tomatoes, and light mayo on toasted sourdough bread.",
-        price: 10.99,
-        allergens: ["gluten", "eggs"],
-        tags: ["Best Seller"],
-        isAvailable: true,
-        type: "non-veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-3",
-        name: "Spinach and Feta Stuffed Chicken",
-        description: "Plump chicken breast stuffed with tender spinach and crumbled feta cheese, baked to a golden brown and served with pan juices.",
-        price: 14.99,
-        allergens: ["dairy"],
-        tags: ["Chef Special"],
-        isAvailable: true,
-        type: "non-veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-4",
-        name: "Vegetable Quinoa Bowl",
-        description: "Hearty organic quinoa bed loaded with seasoned roasted seasonal vegetables, avocado slices, and zesty lemon tahini glaze.",
-        price: 11.99,
-        allergens: ["sesame"],
-        tags: ["Vegan Option", "Gluten-Free"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-5",
-        name: "BBQ Pulled Pork Sandwich",
-        description: "Slow-roasted tender pulled pork smothered in sweet hickory BBQ sauce, topped with crunchy vinegar coleslaw on toasted brioche bun.",
-        price: 9.99,
-        allergens: ["gluten"],
-        tags: [],
-        isAvailable: true,
-        type: "non-veg" as const,
-        spiceLevel: 1
-      },
-      {
-        id: "item-6",
-        name: "Caprese Panini",
-        description: "Creamy buffalo mozzarella cheese, vine-ripe sliced tomatoes, sweet basil leaves, and tangy balsamic glaze pressed in warm artisan ciabatta bread.",
-        price: 8.99,
-        allergens: ["dairy", "gluten"],
-        tags: ["Vegetarian Classic"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-7",
-        name: "Fish Tacos",
-        description: "Three soft corn tortillas loaded with blackened mahi-mahi flakes, pickled cabbage shred, and fresh spicy chipotle crema drizzle.",
-        price: 13.99,
-        allergens: ["fish", "dairy"],
-        tags: ["Spicy Favorite"],
-        isAvailable: true,
-        type: "non-veg" as const,
-        spiceLevel: 1
-      },
-      {
-        id: "item-8",
-        name: "Mushroom and Swiss Burger",
-        description: "Char-broiled premium beef patty topped with savory sautéed wild mushrooms and melted Swiss cheese slice on toasted sesame seed bun.",
-        price: 12.99,
-        allergens: ["dairy", "gluten"],
-        tags: [],
-        isAvailable: true,
-        type: "non-veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-9",
-        name: "Quiche Lorraine",
-        description: "Traditional savory French custard tart baked in flaky pastry shell with smoky bacon pieces and imported Gruyère cheese.",
-        price: 10.99,
-        allergens: ["dairy", "gluten", "eggs"],
-        tags: [],
-        isAvailable: true,
-        type: "non-veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-10",
-        name: "Mediterranean Pasta",
-        description: "Penne pasta tossed in extra virgin olive oil, sweet cherry tomatoes, sliced kalamata olives, artichoke hearts, and crumbled Greek feta cheese.",
-        price: 13.99,
-        allergens: ["dairy", "gluten"],
-        tags: ["Vegetarian"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-11",
-        name: "Asian Chicken Salad",
-        description: "Crispy napa cabbage shred, grilled chicken strips, mandarin orange segments, and crunchy wonton skins, tossed in sweet ginger-soy vinaigrette.",
-        price: 11.99,
-        allergens: ["soy", "gluten"],
-        tags: [],
-        isAvailable: true,
-        type: "non-veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-12",
-        name: "Beef Stir-Fry",
-        description: "Tender flank steak slices stir-fried with red bell peppers, broccoli florets, and snap peas in garlic-soy glaze over jasmine rice.",
-        price: 15.99,
-        allergens: ["soy", "gluten"],
-        tags: ["Spicy"],
-        isAvailable: true,
-        type: "non-veg" as const,
-        spiceLevel: 1
-      },
-      {
-        id: "item-13",
-        name: "Margherita Pizza",
-        description: "Classic pizza base with San Marzano tomato spread, fresh buffalo mozzarella slices, sweet basil, and extra virgin olive oil.",
-        price: 14.99,
-        allergens: ["dairy", "gluten"],
-        tags: ["Vegetarian Classic"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-14",
-        name: "Roasted Vegetable Wrap",
-        description: "Grilled zucchini strips, eggplant, roasted bell peppers, and fresh organic chickpea hummus wrapped in a warm spinach tortilla wrap.",
-        price: 9.99,
-        allergens: ["gluten", "sesame"],
-        tags: ["Vegan Option"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-15",
-        name: "Soup of the Day",
-        description: "Freshly prepared rustic house soup. Please ask your server for details on today's scratch recipe selection.",
-        price: 5.99,
-        allergens: [],
-        tags: ["House Favorite"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      }
-    ]
-  },
-  {
-    id: "cat-2",
-    name: "Beverages",
-    description: "Chilled soft drinks, iced brews, fresh juices, and warm beverages.",
-    items: [
-      {
-        id: "item-16",
-        name: "Soft Drinks",
-        description: "Choice of chilled carbonated drinks: Coca-Cola, Sprite, or Orange Fanta.",
-        price: 2.99,
-        allergens: [],
-        tags: [],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-17",
-        name: "Iced Tea",
-        description: "Cold-brewed pure black tea served over ice with fresh lemon wedges.",
-        price: 2.99,
-        allergens: [],
-        tags: [],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-18",
-        name: "Freshly Squeezed Lemonade",
-        description: "Home-style freshly squeezed lemon juice, sweet simple syrup, and cold filtered water.",
-        price: 3.99,
-        allergens: [],
-        tags: [],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-19",
-        name: "Fruit Smoothies",
-        description: "Blended organic seasonal fresh fruits with greek yogurt and organic honey drop.",
-        price: 4.99,
-        allergens: ["dairy"],
-        tags: ["Healthy Choice"],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-20",
-        name: "Coffee",
-        description: "Hot drip coffee brewed from premium medium-roast Arabica coffee beans.",
-        price: 2.99,
-        allergens: [],
-        tags: [],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-21",
-        name: "Hot Tea",
-        description: "Brewed hot water served with a selection of premium organic herbal and green tea bags.",
-        price: 2.99,
-        allergens: [],
-        tags: [],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      },
-      {
-        id: "item-22",
-        name: "Bottled Water",
-        description: "Chilled mineral spring bottled water.",
-        price: 1.99,
-        allergens: [],
-        tags: [],
-        isAvailable: true,
-        type: "veg" as const,
-        spiceLevel: 0
-      }
-    ]
+
+async function readTextFromFile(file: File) {
+  if (file.type.startsWith("text/") || /\.(txt|csv|md)$/i.test(file.name)) {
+    return file.text();
   }
-];
+
+  if (file.type.startsWith("image/")) {
+    const { createWorker } = await import("tesseract.js");
+    const worker = await createWorker("eng");
+
+    try {
+      const result = await worker.recognize(file);
+      return result.data.text || "";
+    } finally {
+      await worker.terminate();
+    }
+  }
+
+  return "";
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatPreviewPrice(price: number, currency: string) {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      currencyDisplay: "narrowSymbol"
+    }).format(price);
+  } catch {
+    return `${currency} ${price.toFixed(2)}`;
+  }
+}
 
 export default function UploadMenuPage() {
   const { restaurant } = useWorkspace();
   const router = useRouter();
-  const params = useParams() as { restaurantId: string };
   
   const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<"idle" | "uploading" | "extracting" | "done" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [uploadId, setUploadId] = useState("");
-  
-  const [extractedData, setExtractedData] = useState<typeof MOCK_EXTRACTED_MENU | null>(null);
+  const [uploadedFileUrl, setUploadedFileUrl] = useState("");
+  const [uploadedFileType, setUploadedFileType] = useState("");
+  const [uploadedFileName, setUploadedFileName] = useState("");
+  const [rawExtractedText, setRawExtractedText] = useState("");
+  const [strictJsonText, setStrictJsonText] = useState("");
+  const [digitizedMetadata, setDigitizedMetadata] = useState<DigitizedMenuImport["metadata"] | null>(null);
+  const [extractionNotice, setExtractionNotice] = useState("");
+  const [extractedData, setExtractedData] = useState<MenuCategory[] | null>(null);
   const [importing, setImporting] = useState(false);
 
   if (!restaurant) return null;
+
+  const extractedItemCount = countMenuItems(extractedData || []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -385,6 +91,45 @@ export default function UploadMenuPage() {
       setFile(selected);
       setStatus("idle");
       setErrorMessage("");
+      setExtractionNotice("");
+      setRawExtractedText("");
+      setStrictJsonText("");
+      setDigitizedMetadata(null);
+      setExtractedData(null);
+      setUploadedFileUrl("");
+      setUploadedFileType("");
+      setUploadedFileName("");
+    }
+  };
+
+  const rebuildPreview = (sourceText: string) => {
+    const parsedCategories = parseMenuTextToCategories(sourceText);
+    setExtractedData(parsedCategories);
+
+    if (countMenuItems(parsedCategories) === 0) {
+      setExtractionNotice(
+        "No item-price rows were detected. Add or correct the menu text below with one item and price per line, then rebuild the preview."
+      );
+      return;
+    }
+
+    setExtractionNotice("");
+  };
+
+  const importStrictJson = () => {
+    try {
+      const imported = parseDigitizedMenuJson(strictJsonText);
+      const importedItemCount = countMenuItems(imported.categories);
+
+      setExtractedData(imported.categories);
+      setDigitizedMetadata(imported.metadata);
+      setExtractionNotice(
+        importedItemCount === imported.metadata.totalItemsDetected
+          ? `Verified JSON imported. Final item count: ${importedItemCount}.`
+          : `Verified JSON imported with ${importedItemCount} items. Metadata expected ${imported.metadata.totalItemsDetected}; please review before publishing.`
+      );
+    } catch (err: any) {
+      setExtractionNotice(err?.message || "Verified JSON could not be parsed.");
     }
   };
 
@@ -396,7 +141,6 @@ export default function UploadMenuPage() {
       return;
     }
     setStatus("uploading");
-    setUploading(true);
     setErrorMessage("");
 
     try {
@@ -411,47 +155,95 @@ export default function UploadMenuPage() {
         const uploadResult = await uploadBytes(fileRef, file);
         downloadUrl = await getDownloadURL(uploadResult.ref);
       } else {
-        // Mock upload: use local Object URL
-        downloadUrl = URL.createObjectURL(file);
+        downloadUrl = file.type.startsWith("image/") ? await fileToDataUrl(file) : URL.createObjectURL(file);
       }
+      setUploadedFileUrl(downloadUrl);
+      setUploadedFileType(file.type);
+      setUploadedFileName(file.name);
 
       // 2. Add Upload Document in Firestore
-      await addUpload(restId, {
+      const uploadRecord = await addUpload(restId, {
         fileUrl: downloadUrl,
         storagePath,
         fileType: file.type,
         originalFileName: file.name,
       });
 
-      setUploadId(uniqueUploadId);
+      const savedUploadId = uploadRecord?.id || uniqueUploadId;
+      setUploadId(savedUploadId);
       
-      // 3. Trigger Mock AI Extraction
+      // 3. Extract text from the posted file and parse categories/items.
       setStatus("extracting");
-      
-      // Simulate OCR extraction time (3 seconds)
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const extractedText = await readTextFromFile(file);
+      setRawExtractedText(extractedText);
+
+      const parsedCategories = parseMenuTextToCategories(extractedText);
+      setExtractedData(parsedCategories);
+
+      const itemCount = countMenuItems(parsedCategories);
+
+      if (itemCount === 0) {
+        setExtractionNotice(
+          file.type === "application/pdf"
+            ? "PDF OCR is not available in this local build yet. The exact posted file will still be attached to the live menu. Paste text below only if you want searchable items."
+            : "OCR finished, but no item-price rows were detected. The exact posted image will still be attached to the live menu. Correct the text below only if you want searchable items."
+        );
+      } else {
+        setExtractionNotice("");
+      }
+
+      // Automatically generate structure matching DigitizedMenuImport format
+      const digitizedCategories = parsedCategories.map(cat => ({
+        category_name: cat.name,
+        items: cat.items.map(item => ({
+          name: item.name,
+          description: item.description || null,
+          price: item.price,
+          dietary_tag: item.type === "unknown" ? null : item.type,
+          spice_level: item.spiceLevel ?? null,
+          is_available: item.isAvailable,
+          confidence: item.confidence || "high"
+        }))
+      }));
+
+      const digitizedJson = {
+        menu_metadata: {
+          total_items_detected: itemCount,
+          total_categories_detected: parsedCategories.length,
+          extraction_confidence_notes: "Auto-digitized from OCR text stream"
+        },
+        categories: digitizedCategories
+      };
+
+      const jsonString = JSON.stringify(digitizedJson, null, 2);
+      setStrictJsonText(jsonString);
+      setDigitizedMetadata({
+        totalItemsDetected: itemCount,
+        totalCategoriesDetected: parsedCategories.length,
+        confidenceNotes: "Auto-digitized from OCR text stream"
+      });
       
       // 4. Update status in Firestore to completed
       await updateUploadStatus(
         restId, 
-        uniqueUploadId, 
+        savedUploadId, 
         "completed", 
-        JSON.stringify(MOCK_EXTRACTED_MENU)
+        jsonString
       );
 
-      setExtractedData(MOCK_EXTRACTED_MENU);
       setStatus("done");
     } catch (err: any) {
       console.error("Upload/OCR process failed:", err);
       setErrorMessage("Failed to upload and parse the menu file. " + (err.message || ""));
       setStatus("error");
-    } finally {
-      setUploading(false);
     }
   };
 
   const handleImport = async () => {
-    if (!extractedData) return;
+    if (!uploadedFileUrl && (!extractedData || extractedItemCount === 0)) {
+      setExtractionNotice("Upload a menu file or add at least one detected menu item before importing.");
+      return;
+    }
     const restId = restaurant.id;
     if (!restId) {
       setErrorMessage("Restaurant ID is not loaded yet.");
@@ -461,11 +253,19 @@ export default function UploadMenuPage() {
     
     try {
       // 1. Create a new menu
-      const menuId = await createMenu(restId, "AI Extracted Menu");
+      const menuId = await createMenu(restId, file?.name ? `Imported Menu - ${file.name}` : "Imported Menu");
       
-      // 2. Populate the menu document with mock categories/items
+      // 2. Populate the menu document with categories/items from the posted menu only.
       await saveMenu(restId, menuId, {
-        categories: extractedData,
+        categories: extractedData || [],
+        sourceFileUrl: uploadedFileUrl,
+        sourceFileType: uploadedFileType,
+        sourceFileName: uploadedFileName,
+        sourceUploadId: uploadId,
+        rawExtractedText,
+        rawDigitizedJson: strictJsonText.trim() || undefined,
+        structuredItemsVerified: Boolean(digitizedMetadata),
+        digitizationMetadata: digitizedMetadata || undefined,
       });
 
       // 3. Direct user to the builder to see the imported items
@@ -507,7 +307,7 @@ export default function UploadMenuPage() {
             <div className="border-2 border-dashed border-zinc-800 hover:border-zinc-700 bg-zinc-900/10 rounded-2xl p-12 text-center relative transition-all">
               <input
                 type="file"
-                accept="application/pdf,image/*"
+                accept="application/pdf,image/*,.txt,.csv"
                 onChange={handleFileChange}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
@@ -521,7 +321,7 @@ export default function UploadMenuPage() {
                   ) : (
                     <p className="text-sm font-semibold text-white">Click or drag print menu file here</p>
                   )}
-                  <p className="text-zinc-500 text-xs">Supports PDF, PNG, JPG up to 10MB</p>
+                  <p className="text-zinc-500 text-xs">Supports PNG, JPG, PDF, TXT, or CSV up to 10MB</p>
                 </div>
               </div>
             </div>
@@ -566,42 +366,168 @@ export default function UploadMenuPage() {
               <div className="text-left space-y-6">
                 
                 {/* Completion Header Banner */}
-                <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/25 p-4 rounded-xl text-emerald-400">
-                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                <div className={`flex items-center gap-3 border p-4 rounded-xl ${
+                  extractedItemCount > 0
+                    ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                    : "bg-amber-500/10 border-amber-500/25 text-amber-400"
+                }`}>
+                  {extractedItemCount > 0 ? (
+                    <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-5 h-5 shrink-0" />
+                  )}
                   <div>
-                    <h3 className="font-bold text-sm">AI Menu Extraction Completed!</h3>
-                    <p className="text-[11px] text-emerald-400/80 mt-0.5">Found {extractedData.reduce((count, cat) => count + cat.items.length, 0)} menu items across {extractedData.length} categories.</p>
+                    <h3 className="font-bold text-sm">
+                      {extractedItemCount > 0 ? "Menu extraction ready" : "Review extracted text"}
+                    </h3>
+                    <p className="text-[11px] opacity-80 mt-0.5">
+                      Found {extractedItemCount} menu items across {extractedData.length} categories from the posted file only.
+                    </p>
+                    {uploadId && <p className="text-[10px] opacity-60 mt-1">Upload ref: {uploadId}</p>}
                   </div>
+                </div>
+
+                {extractionNotice && (
+                  <div className="bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs py-3 px-4 rounded-xl flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{extractionNotice}</span>
+                  </div>
+                )}
+
+                {uploadedFileUrl && (
+                  <div className="space-y-3 border border-zinc-900 rounded-2xl p-5 bg-zinc-900/10">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Posted Menu File</p>
+                        <p className="text-[11px] text-zinc-500 mt-1">{uploadedFileName}</p>
+                      </div>
+                      <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold text-emerald-400">
+                        Exact source saved
+                      </span>
+                    </div>
+
+                    {uploadedFileType.startsWith("image/") ? (
+                      <div className="max-h-[520px] overflow-auto rounded-xl border border-zinc-800 bg-black/30 p-2">
+                        <img src={uploadedFileUrl} alt={uploadedFileName || "Uploaded menu"} className="mx-auto h-auto max-w-full rounded-lg" />
+                      </div>
+                    ) : (
+                      <a
+                        href={uploadedFileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-xs font-bold text-white hover:bg-zinc-900"
+                      >
+                        Open uploaded menu file
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-3 border border-zinc-900 rounded-2xl p-5 bg-zinc-900/10">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5 text-amber-500" />
+                        Extracted Menu Text
+                      </p>
+                      <p className="text-[11px] text-zinc-500 mt-1">
+                        Correct OCR mistakes here before importing. The preview below rebuilds from this text.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => rebuildPreview(rawExtractedText)}
+                      className="inline-flex items-center justify-center gap-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-white px-3 py-2 rounded-lg text-[11px] font-bold transition-colors"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Rebuild Preview
+                    </button>
+                  </div>
+
+                  <textarea
+                    value={rawExtractedText}
+                    onChange={(event) => setRawExtractedText(event.target.value)}
+                    placeholder={"Example:\nWaffle Stick\nWhite Fantasy Waffle 70\nDark Chocolate Waffle 70\nOreo Chocolate Waffle 80"}
+                    rows={8}
+                    className="w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs leading-6 text-white placeholder-zinc-600 outline-none transition focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-3 border border-zinc-900 rounded-2xl p-5 bg-zinc-900/10">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                        Verified Digitized JSON
+                      </p>
+                      {digitizedMetadata && (
+                        <p className="text-[11px] text-zinc-500 mt-1">
+                          {digitizedMetadata.totalItemsDetected} items / {digitizedMetadata.totalCategoriesDetected} categories / notes: {digitizedMetadata.confidenceNotes}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={importStrictJson}
+                      disabled={!strictJsonText.trim()}
+                      className="inline-flex items-center justify-center gap-1.5 bg-emerald-500 text-black px-3 py-2 rounded-lg text-[11px] font-bold transition-colors disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Import JSON
+                    </button>
+                  </div>
+
+                  <textarea
+                    value={strictJsonText}
+                    onChange={(event) => setStrictJsonText(event.target.value)}
+                    placeholder={'{"menu_metadata":{"total_items_detected":0,"total_categories_detected":0,"extraction_confidence_notes":"none"},"categories":[]}'}
+                    rows={8}
+                    className="w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 font-mono text-[11px] leading-5 text-white placeholder-zinc-600 outline-none transition focus:border-emerald-500"
+                  />
                 </div>
 
                 {/* Extracted preview list */}
                 <div className="space-y-4 border border-zinc-900 rounded-2xl p-6 bg-zinc-900/10">
                   <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Extraction Preview</p>
                   
-                  {extractedData.map((category) => (
-                    <div key={category.id} className="space-y-2 pt-2 border-t border-zinc-900/60 first:border-0 first:pt-0">
-                      <div className="flex justify-between items-baseline">
-                        <h4 className="text-sm font-extrabold text-amber-500">{category.name}</h4>
-                        <span className="text-[10px] text-zinc-500 italic">{category.description}</span>
-                      </div>
-                      
-                      <div className="grid gap-2 mt-2">
-                        {category.items.map((item) => (
-                          <div key={item.id} className="flex justify-between items-start text-xs bg-zinc-950 p-2.5 rounded-lg border border-zinc-900">
-                            <div>
-                              <div className="flex items-center gap-1.5 font-bold text-white">
-                                {item.name}
-                                {item.type === "veg" && <Leaf className="w-3 h-3 text-emerald-400 fill-emerald-400/10" />}
-                                {item.spiceLevel > 0 && <Flame className="w-3 h-3 text-orange-500" />}
-                              </div>
-                              <p className="text-[10px] text-zinc-500 mt-0.5 line-clamp-1">{item.description}</p>
-                            </div>
-                            <span className="font-bold text-white shrink-0">${item.price.toFixed(2)}</span>
-                          </div>
-                        ))}
-                      </div>
+                  {extractedItemCount === 0 ? (
+                    <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 p-8 text-center">
+                      <FileText className="w-8 h-8 mx-auto text-zinc-600" />
+                      <p className="mt-3 text-sm font-bold text-white">No menu items detected yet</p>
+                      <p className="mt-1 text-xs leading-5 text-zinc-500">
+                        Keep category headings on separate lines and place each item price at the end of its item line.
+                      </p>
                     </div>
-                  ))}
+                  ) : (
+                    extractedData.map((category) => (
+                      <div key={category.id} className="space-y-2 pt-2 border-t border-zinc-900/60 first:border-0 first:pt-0">
+                        <div className="flex justify-between items-baseline gap-3">
+                          <h4 className="text-sm font-extrabold text-amber-500">{category.name}</h4>
+                          <span className="text-[10px] text-zinc-500">{category.items.length} items</span>
+                        </div>
+                        
+                        <div className="grid gap-2 mt-2">
+                          {category.items.map((item) => (
+                            <div key={item.id} className="flex justify-between items-start gap-4 text-xs bg-zinc-950 p-2.5 rounded-lg border border-zinc-900">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 font-bold text-white">
+                                  <span className="truncate">{item.name}</span>
+                                  {item.type === "veg" && <Leaf className="w-3 h-3 text-emerald-400 fill-emerald-400/10 shrink-0" />}
+                                  {Number(item.spiceLevel) > 0 && <Flame className="w-3 h-3 text-orange-500 shrink-0" />}
+                                </div>
+                                {item.description && (
+                                  <p className="text-[10px] text-zinc-500 mt-0.5 line-clamp-1">{item.description}</p>
+                                )}
+                              </div>
+                              <span className="font-bold text-white shrink-0">
+                                {formatPreviewPrice(item.price, restaurant.currency)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 {/* Import Buttons */}
@@ -611,6 +537,13 @@ export default function UploadMenuPage() {
                       setStatus("idle");
                       setFile(null);
                       setExtractedData(null);
+                      setRawExtractedText("");
+                      setStrictJsonText("");
+                      setDigitizedMetadata(null);
+                      setExtractionNotice("");
+                      setUploadedFileUrl("");
+                      setUploadedFileType("");
+                      setUploadedFileName("");
                     }}
                     className="flex-1 border border-zinc-800 bg-transparent hover:bg-zinc-900 text-zinc-300 font-semibold py-3 rounded-xl text-xs transition-colors"
                   >
@@ -618,7 +551,7 @@ export default function UploadMenuPage() {
                   </button>
                   <button
                     onClick={handleImport}
-                    disabled={importing}
+                    disabled={importing || (!uploadedFileUrl && extractedItemCount === 0)}
                     className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 text-black font-bold py-3 rounded-xl text-xs hover:shadow-lg hover:shadow-amber-500/15 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
                   >
                     {importing ? (
@@ -628,7 +561,7 @@ export default function UploadMenuPage() {
                       </>
                     ) : (
                       <>
-                        Import into Menu Builder
+                        Import Exact Menu
                         <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                       </>
                     )}

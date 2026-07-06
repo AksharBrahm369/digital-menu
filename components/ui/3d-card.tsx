@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, MouseEvent } from "react";
-import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
+import { motion, useMotionValue, useSpring, useTransform, type MotionStyle } from "framer-motion";
 
 interface Card3DProps {
   frontContent: React.ReactNode;
@@ -87,7 +87,7 @@ export const Card3D: React.FC<Card3DProps> = ({
 
   // Base card styling classes - dynamically strip background colors if theme styling is loaded
   const getCardClasses = () => {
-    let base = "relative rounded-2xl overflow-hidden transition-all duration-300 w-full ";
+    const base = "relative rounded-2xl overflow-hidden transition-all duration-300 w-full ";
     if (styleType === "flat") {
       return base + (theme ? "border" : "border border-zinc-200 dark:border-zinc-850 bg-white dark:bg-zinc-950");
     }
@@ -140,11 +140,9 @@ export const Card3D: React.FC<Card3DProps> = ({
             opacity: glareOpacity,
             pointerEvents: "none",
             zIndex: 10,
-            // @ts-ignore
             "--glare-x": glareX,
-            // @ts-ignore
             "--glare-y": glareY,
-          }}
+          } as unknown as MotionStyle}
         />
         
         {/* Child Content */}

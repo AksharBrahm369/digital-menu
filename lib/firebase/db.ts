@@ -70,6 +70,12 @@ export interface MenuItem {
   name: string;
   description: string;
   price: number;
+  priceOptions?: Array<{ size?: string | null; amount: number | null }>;
+  variants?: string[];
+  confidence?: "high" | "medium" | "low";
+  subcategory?: string | null;
+  dietaryTag?: "veg" | "non-veg" | "egg" | "vegan" | null;
+  specialTag?: string | null;
   image?: string;
   imageUrl?: string;
   allergens: string[];
@@ -78,8 +84,8 @@ export interface MenuItem {
   isActive?: boolean;
   isFeatured?: boolean;
   isPopular?: boolean;
-  type: "veg" | "non-veg" | "egg";
-  spiceLevel: number;
+  type: "veg" | "non-veg" | "egg" | "vegan" | "unknown";
+  spiceLevel: number | null;
   sortOrder?: number;
 }
 
@@ -112,6 +118,18 @@ export interface Menu {
   version: number;
   categories: MenuCategory[];
   theme: MenuTheme;
+  sourceFileUrl?: string;
+  sourceFileType?: string;
+  sourceFileName?: string;
+  sourceUploadId?: string;
+  rawExtractedText?: string;
+  rawDigitizedJson?: string;
+  structuredItemsVerified?: boolean;
+  digitizationMetadata?: {
+    totalItemsDetected?: number;
+    totalCategoriesDetected?: number;
+    confidenceNotes?: string;
+  };
   publishedAt?: any;
   createdAt: any;
   updatedAt: any;
@@ -160,6 +178,10 @@ const sortMenusByPublishDate = (menus: Menu[]) => {
     if (publishedDiff !== 0) return publishedDiff;
     return timestampToMillis(b.updatedAt) - timestampToMillis(a.updatedAt);
   });
+};
+
+const sortRestaurantsByUpdatedDate = (restaurants: Restaurant[]) => {
+  return [...restaurants].sort((a, b) => timestampToMillis(b.updatedAt) - timestampToMillis(a.updatedAt));
 };
 
 const isPublicRestaurantStatus = (status?: Restaurant["status"]) => {
@@ -260,7 +282,7 @@ export async function createRestaurant(ownerId: string, data: Omit<Restaurant, "
   }
 
   const restaurantsColl = collection(db, "restaurants");
-  const restDocRef = doc(restaurantsColl);
+  const restDocRef = data.id ? doc(db, "restaurants", data.id) : doc(restaurantsColl);
   const restaurantId = restDocRef.id;
   
   const restaurantData: Restaurant = {
@@ -312,19 +334,15 @@ export async function getRestaurants(ownerId: string): Promise<Restaurant[]> {
 export async function getRestaurantBySlug(slug: string): Promise<Restaurant | null> {
   if (!isFirebaseConfigured()) {
     const res = await fetchMock("GET_DOCS", "restaurants", undefined, undefined, { slug });
-    const restaurants = (res.data || []) as Restaurant[];
-    return restaurants.find(rest => isPublicRestaurantStatus(rest.status) && (rest.currentPublishedMenuId || rest.activeMenuId))
-      || restaurants.find(rest => isPublicRestaurantStatus(rest.status))
-      || null;
+    const restaurants = sortRestaurantsByUpdatedDate((res.data || []) as Restaurant[]);
+    return restaurants[0] || null;
   }
 
-  const q = query(collection(db, "restaurants"), where("slug", "==", slug), limit(10));
+  const q = query(collection(db, "restaurants"), where("slug", "==", slug), limit(1));
   const querySnapshot = await getDocs(q);
   if (querySnapshot.empty) return null;
-  const restaurants = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Restaurant));
-  return restaurants.find(rest => isPublicRestaurantStatus(rest.status) && (rest.currentPublishedMenuId || rest.activeMenuId))
-    || restaurants.find(rest => isPublicRestaurantStatus(rest.status))
-    || null;
+  const docSnap = querySnapshot.docs[0];
+  return { id: docSnap.id, ...docSnap.data() } as Restaurant;
 }
 
 export async function updateRestaurant(restaurantId: string, data: Partial<Restaurant>) {
@@ -343,7 +361,11 @@ export async function updateRestaurant(restaurantId: string, data: Partial<Resta
 // Uploads (Menu PDF/Image Upload Logs)
 export async function addUpload(restaurantId: string, uploadData: Omit<MenuUpload, "createdAt" | "extractionStatus">) {
   if (!isFirebaseConfigured()) {
-    const res = await fetchMock("addDoc", "uploads", undefined, { ...uploadData, restaurantId });
+    const res = await fetchMock("addDoc", "uploads", undefined, {
+      ...uploadData,
+      restaurantId,
+      extractionStatus: "pending"
+    });
     return res.data;
   }
 
@@ -398,6 +420,72 @@ export async function saveMenu(restaurantId: string, menuId: string, menuData: P
     ...menuData,
     updatedAt: serverTimestamp()
   }, { merge: true });
+
+  // Sync categories and items to Firestore subcollections if updated
+  if (menuData.categories) {
+    try {
+      const categoriesColl = collection(db, "restaurants", restaurantId, "menus", menuId, "categories");
+      const itemsColl = collection(db, "restaurants", restaurantId, "menus", menuId, "items");
+
+      // Fetch existing documents to clean them up first
+      const [categoriesSnapshot, itemsSnapshot] = await Promise.all([
+        getDocs(categoriesColl),
+        getDocs(itemsColl)
+      ]);
+
+      const batch = writeBatch(db);
+
+      // Add delete operations
+      categoriesSnapshot.docs.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+      });
+      itemsSnapshot.docs.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+      });
+
+      // Add write operations for updated categories and items
+      menuData.categories.forEach((category, catIndex) => {
+        const catId = category.id || `cat_${catIndex}`;
+        const catDocRef = doc(categoriesColl, catId);
+        
+        batch.set(catDocRef, {
+          name: category.name || "",
+          description: category.description || "",
+          sortOrder: category.sortOrder ?? catIndex,
+          isActive: category.isActive !== false
+        });
+
+        if (category.items) {
+          category.items.forEach((item, itemIndex) => {
+            const itemId = item.id || `item_${catIndex}_${itemIndex}`;
+            const itemDocRef = doc(itemsColl, itemId);
+            
+            batch.set(itemDocRef, {
+              categoryId: catId,
+              name: item.name || "",
+              description: item.description || "",
+              price: Number(item.price) || 0,
+              imageUrl: item.imageUrl || item.image || "",
+              isAvailable: item.isAvailable !== false,
+              isVeg: item.type === "veg" || item.type === "vegan" || item.dietaryTag === "veg" || item.dietaryTag === "vegan",
+              isFeatured: item.isFeatured || item.isPopular || false,
+              spiceLevel: item.spiceLevel ?? null,
+              allergens: item.allergens || [],
+              tags: item.tags || [],
+              sortOrder: item.sortOrder ?? itemIndex,
+              sourceText: item.specialTag || "",
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+          });
+        }
+      });
+
+      await batch.commit();
+    } catch (err) {
+      console.error("Error syncing menu subcollections:", err);
+    }
+  }
 }
 
 export async function createMenu(restaurantId: string, name: string) {
@@ -485,6 +573,51 @@ export async function getPublishedMenuForRestaurant(restaurant: Restaurant): Pro
   return sortMenusByPublishDate(publishedMenus)[0] || null;
 }
 
+export async function getMenuCategoriesSubcollection(restaurantId: string, menuId: string): Promise<any[]> {
+  if (!isFirebaseConfigured()) {
+    return [];
+  }
+  try {
+    const collRef = collection(db, "restaurants", restaurantId, "menus", menuId, "categories");
+    const querySnapshot = await getDocs(collRef);
+    return querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+  } catch (err) {
+    console.error("Error fetching categories subcollection:", err);
+    return [];
+  }
+}
+
+export async function getMenuItemsSubcollection(restaurantId: string, menuId: string): Promise<any[]> {
+  if (!isFirebaseConfigured()) {
+    return [];
+  }
+  try {
+    const collRef = collection(db, "restaurants", restaurantId, "menus", menuId, "items");
+    const querySnapshot = await getDocs(collRef);
+    return querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+  } catch (err) {
+    console.error("Error fetching items subcollection:", err);
+    return [];
+  }
+}
+
+export async function getActiveThemeForRestaurant(restaurantId: string): Promise<MenuTheme | null> {
+  if (!isFirebaseConfigured()) {
+    return null;
+  }
+  try {
+    const themesColl = collection(db, "restaurants", restaurantId, "themes");
+    const q = query(themesColl, where("isActive", "==", true), limit(1));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      return querySnapshot.docs[0].data() as MenuTheme;
+    }
+  } catch (err) {
+    console.error("Error fetching active theme:", err);
+  }
+  return null;
+}
+
 export async function publishMenu(restaurantId: string, menuId: string) {
   if (!isFirebaseConfigured()) {
     const restaurant = await getRestaurant(restaurantId);
@@ -499,7 +632,7 @@ export async function publishMenu(restaurantId: string, menuId: string) {
     });
     await fetchMock("updateDoc", "restaurants", restaurantId, {
       ...(slug ? { slug } : {}),
-      status: "active",
+      status: "published",
       activeMenuId: menuId,
       currentPublishedMenuId: menuId
     });
@@ -520,7 +653,7 @@ export async function publishMenu(restaurantId: string, menuId: string) {
   });
   batch.update(restRef, {
     ...(uniqueSlug ? { slug: uniqueSlug } : {}),
-    status: "active",
+    status: "published",
     activeMenuId: menuId,
     currentPublishedMenuId: menuId,
     updatedAt: serverTimestamp()

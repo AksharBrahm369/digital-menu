@@ -23,15 +23,16 @@ export default function AnalyticsPage() {
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  if (!restaurant) return null;
+  const restaurantId = restaurant?.id;
 
   useEffect(() => {
     const fetchAnalyticsData = async () => {
+      if (!restaurantId) return;
+
       try {
         const [scanLogs, qrList] = await Promise.all([
-          getScanLogs(restaurant.id!, 100),
-          getRestaurantQrs(restaurant.id!)
+          getScanLogs(restaurantId, 100),
+          getRestaurantQrs(restaurantId)
         ]);
         setLogs(scanLogs);
         setQrs(qrList);
@@ -44,7 +45,9 @@ export default function AnalyticsPage() {
     };
 
     fetchAnalyticsData();
-  }, [restaurant.id]);
+  }, [restaurantId]);
+
+  if (!restaurant || !restaurantId) return null;
 
   // Aggregate device metrics
   let iosCount = 0;

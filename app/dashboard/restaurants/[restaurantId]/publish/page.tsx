@@ -19,6 +19,14 @@ import {
   ChefHat
 } from "lucide-react";
 
+function getMenuItemCount(menu: Menu) {
+  return menu.categories?.reduce((acc, cat) => acc + (cat.items?.length || 0), 0) || 0;
+}
+
+function hasPublishableMenuContent(menu: Menu) {
+  return getMenuItemCount(menu) > 0 || Boolean(menu.sourceFileUrl);
+}
+
 export default function PublishPage() {
   const { restaurant, refreshRestaurant } = useWorkspace();
   const searchParams = useSearchParams();
@@ -38,24 +46,27 @@ export default function PublishPage() {
   const [selectedPrintQr, setSelectedPrintQr] = useState<QrCode | null>(null);
 
   // QR rendering refs
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  if (!restaurant) return null;
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const restaurantId = restaurant?.id;
+  const restaurantSlug = restaurant?.slug || "";
 
   const loadPublishDetails = async () => {
+    if (!restaurantId) return;
+
     try {
       const [menuList, qrList] = await Promise.all([
-        getMenus(restaurant.id!),
-        getRestaurantQrs(restaurant.id!)
+        getMenus(restaurantId),
+        getRestaurantQrs(restaurantId)
       ]);
       setMenus(menuList);
       setQrs(qrList);
       
       // Default select the active menu or the one with categories, or the first menu
-      const activeMenu = menuList.find(m => m.id === restaurant.activeMenuId);
-      const defaultMenu = activeMenu && activeMenu.categories && activeMenu.categories.length > 0
+      const publishedMenuId = restaurant?.currentPublishedMenuId || restaurant?.activeMenuId;
+      const activeMenu = menuList.find(m => m.id === publishedMenuId);
+      const defaultMenu = activeMenu && hasPublishableMenuContent(activeMenu)
         ? activeMenu
-        : menuList.find(m => m.categories && m.categories.length > 0) || menuList[0];
+        : menuList.find(hasPublishableMenuContent) || menuList[0];
       
       setSelectedMenuId(defaultMenu ? defaultMenu.id! : "");
       
@@ -72,12 +83,11 @@ export default function PublishPage() {
 
   useEffect(() => {
     loadPublishDetails();
-  }, [restaurant.id]);
+  }, [restaurantId]);
 
   // Callback Ref: executes immediately when canvas mounts in the DOM
   const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
     // Populate raw ref for print & download actions
-    // @ts-ignore
     canvasRef.current = canvas;
     
     if (!canvas) return;
@@ -85,7 +95,7 @@ export default function PublishPage() {
     // Fallback to customer menu URL if no table QR is selected
     const qrUrl = selectedPrintQr 
       ? `${window.location.origin}/qr/${selectedPrintQr.id}`
-      : `${window.location.origin}/m/${restaurant.slug}`;
+      : `${window.location.origin}/m/${restaurantSlug}`;
     
     QRCode.toCanvas(
       canvas,
@@ -102,7 +112,9 @@ export default function PublishPage() {
         if (error) console.error("Error generating QR Canvas:", error);
       }
     );
-  }, [selectedPrintQr, restaurant.slug]);
+  }, [selectedPrintQr, restaurantSlug]);
+
+  if (!restaurant || !restaurantId) return null;
 
   const handlePublish = async () => {
     if (!selectedMenuId) return;
@@ -307,22 +319,11 @@ export default function PublishPage() {
             ) : (
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-400">Select Menu to Deploy</label>
-                  <select
-                    value={selectedMenuId}
-                    onChange={(e) => setSelectedMenuId(e.target.value)}
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-xl py-2.5 px-3 text-xs text-white focus:outline-none focus:border-amber-500 transition-all"
-                  >
-                    {menus.map((m) => {
-                      const itemCount = m.categories?.reduce((acc, cat) => acc + (cat.items?.length || 0), 0) || 0;
-                      const isActive = m.id === restaurant.activeMenuId;
-                      return (
-                        <option key={m.id} value={m.id}>
-                          {m.name} ({itemCount} {itemCount === 1 ? "item" : "items"}) ({m.status.toUpperCase()} • v{m.version}){isActive ? " [ACTIVE]" : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
+                  <label className="text-xs font-semibold text-zinc-400">Deployed Menu Type</label>
+                  <div className="w-full bg-zinc-900/40 border border-zinc-800 rounded-xl py-3 px-4 text-xs font-bold text-amber-500 flex items-center justify-between">
+                    <span>Interactive 3D Digital Menu</span>
+                    <span className="text-[10px] bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full text-amber-400 font-extrabold uppercase tracking-wide">Active</span>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between p-3.5 bg-zinc-900/20 border border-zinc-900 rounded-xl text-xs">

@@ -87,13 +87,14 @@ export default function ThemeCustomizer() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
-
-  if (!restaurant) return null;
+  const restaurantId = restaurant?.id;
 
   useEffect(() => {
     const fetchMenuAndTheme = async () => {
+      if (!restaurantId) return;
+
       try {
-        const menuList = await getMenus(restaurant.id!);
+        const menuList = await getMenus(restaurantId);
         setMenus(menuList);
 
         let targetMenuId = searchParams.get("menuId");
@@ -102,7 +103,7 @@ export default function ThemeCustomizer() {
         }
 
         if (targetMenuId) {
-          const menuDetails = await getMenu(restaurant.id!, targetMenuId);
+          const menuDetails = await getMenu(restaurantId, targetMenuId);
           if (menuDetails) {
             setActiveMenu(menuDetails);
             if (menuDetails.theme) {
@@ -119,7 +120,9 @@ export default function ThemeCustomizer() {
     };
 
     fetchMenuAndTheme();
-  }, [restaurant.id, searchParams]);
+  }, [restaurantId, searchParams]);
+
+  if (!restaurant || !restaurantId) return null;
 
   const handleSaveTheme = async () => {
     if (!activeMenu || !activeMenu.id) return;
