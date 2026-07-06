@@ -379,12 +379,14 @@ function PublicMenuContent() {
       try {
         if (isFirebaseConfigured()) {
           const response = await fetch(`/api/public-menu?slug=${encodeURIComponent(slug)}`, { cache: "no-store" });
-          const payload = await response.json().catch(() => ({}));
+          const contentType = response.headers.get("content-type") || "";
+          const isJson = contentType.includes("application/json");
+          const payload = isJson ? await response.json().catch(() => ({})) : {};
 
           if (response.status === 404) {
             if (!cancelled) {
               setRestaurant(null);
-              setErrorType("not-found");
+              setErrorType(payload.code === "MENU_NOT_FOUND" ? "not-published" : "not-found");
             }
             return;
           }
@@ -398,6 +400,9 @@ function PublicMenuContent() {
           }
 
           if (!response.ok) {
+            if (!isJson) {
+              throw new Error("Server returned HTML instead of JSON. Check Vercel Function Logs.");
+            }
             throw new Error(payload.error || "Unable to load this menu right now.");
           }
 

@@ -39,14 +39,7 @@ export const hasFirebaseClientConfig = () => {
 };
 
 export const isMockDatabaseEnabled = () => {
-  const mockRequested = process.env.NEXT_PUBLIC_MOCK_DATABASE === "true";
-  const productionMockAllowed = process.env.NEXT_PUBLIC_ALLOW_MOCK_DATABASE_IN_PRODUCTION === "true";
-
-  if (process.env.NODE_ENV === "production" && !productionMockAllowed) {
-    return false;
-  }
-
-  return mockRequested || !hasFirebaseClientConfig();
+  return process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_MOCK_DATABASE === "true";
 };
 
 export const isFirebaseConfigured = () => {

@@ -3,10 +3,6 @@ import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
-if (typeof window !== "undefined") {
-  throw new Error("Firebase Admin SDK must never be imported into browser code.");
-}
-
 type AdminConfig = {
   projectId: string;
   clientEmail: string;
@@ -62,6 +58,10 @@ function parseServiceAccountJson(rawValue: string) {
 }
 
 function readAdminConfig(): AdminConfig {
+  if (typeof window !== "undefined") {
+    throw new Error("Firebase Admin SDK cannot be used in browser code.");
+  }
+
   const serviceAccountRaw =
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
     process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||

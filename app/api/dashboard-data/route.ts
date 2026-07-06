@@ -175,12 +175,28 @@ async function syncMenuSubcollections(restaurantId: string, menuId: string, cate
 
 function handleApiError(error: unknown) {
   if (error instanceof ApiError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    const code =
+      error.status === 401
+        ? "UNAUTHENTICATED"
+        : error.status === 403
+          ? "FORBIDDEN"
+          : error.status === 500 && error.message.toLowerCase().includes("firebase")
+            ? "FIREBASE_ADMIN_CONFIG_ERROR"
+            : "DASHBOARD_DATA_ERROR";
+    console.error("Dashboard data API request failed:", { status: error.status, details: error.message });
+    return NextResponse.json({ error: "Dashboard data request failed", details: error.message, code }, { status: error.status });
   }
 
   const message = error instanceof Error ? error.message : "Unknown server error.";
   console.error("Dashboard data API error:", error);
-  return NextResponse.json({ error: `Dashboard data request failed: ${message}` }, { status: 500 });
+  return NextResponse.json({ error: "Dashboard data request failed", details: message, code: "DASHBOARD_DATA_ERROR" }, { status: 500 });
+}
+
+export async function GET() {
+  return NextResponse.json(
+    { error: "Use POST for dashboard data requests.", code: "METHOD_NOT_ALLOWED" },
+    { status: 405 }
+  );
 }
 
 export async function POST(request: NextRequest) {

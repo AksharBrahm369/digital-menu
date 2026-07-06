@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const MOCK_DB_FILE = path.join(process.cwd(), "mock_db.json");
 
 function isMockDatabaseAllowed() {
-  return process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ALLOW_MOCK_DATABASE_IN_PRODUCTION === "true";
+  return process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_MOCK_DATABASE === "true";
 }
 
 function getMockDb() {

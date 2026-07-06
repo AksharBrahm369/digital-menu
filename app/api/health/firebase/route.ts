@@ -5,17 +5,21 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const configProblem = getFirebaseAdminConfigProblem();
   const checks = getFirebaseAdminEnvStatus();
+  const configProblem = getFirebaseAdminConfigProblem();
 
   if (configProblem) {
     console.error("Firebase health check configuration error:", configProblem);
-    return NextResponse.json({
-      ok: false,
-      error: configProblem,
-      code: "FIREBASE_ADMIN_CONFIG_ERROR",
-      checks,
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Firebase Admin is not configured.",
+        details: configProblem,
+        code: "FIREBASE_ADMIN_CONFIG_ERROR",
+        checks,
+      },
+      { status: 500 }
+    );
   }
 
   try {
@@ -26,13 +30,17 @@ export async function GET() {
       checks,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown Firestore Admin error.";
+    const details = error instanceof Error ? error.message : "Unknown Firestore Admin error.";
     console.error("Firebase health check Firestore error:", error);
-    return NextResponse.json({
-      ok: false,
-      error: `Firebase Admin could not read Firestore: ${message}`,
-      code: "FIRESTORE_UNREACHABLE",
-      checks,
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Firebase Admin could not read Firestore.",
+        details,
+        code: "FIRESTORE_UNREACHABLE",
+        checks,
+      },
+      { status: 500 }
+    );
   }
 }

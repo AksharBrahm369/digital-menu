@@ -5,14 +5,6 @@ import type { Menu, Restaurant } from "@/lib/firebase/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function timestampToMillis(value: any) {
-  if (!value) return 0;
-  if (typeof value.toMillis === "function") return value.toMillis();
-  if (typeof value.seconds === "number") return value.seconds * 1000;
-  if (typeof value._seconds === "number") return value._seconds * 1000;
-  return 0;
-}
-
 function serializeFirestoreValue(value: any): any {
   if (!value) return value;
   if (typeof value.toMillis === "function" && typeof value.seconds === "number") {
@@ -32,48 +24,45 @@ function sortBySortOrder<T extends Record<string, any>>(items: T[]) {
 async function getPublishedMenu(restaurant: Restaurant): Promise<Menu | null> {
   const adminDb = getAdminDb();
   const restaurantId = restaurant.id;
-  if (!restaurantId) return null;
+  const menuId = restaurant.currentPublishedMenuId;
+  if (!restaurantId || !menuId) return null;
 
-  if (restaurant.currentPublishedMenuId) {
-    const snap = await adminDb
-      .collection("restaurants")
-      .doc(restaurantId)
-      .collection("menus")
-      .doc(restaurant.currentPublishedMenuId)
-      .get();
-    if (snap.exists) {
-      const menu = { id: snap.id, ...snap.data() } as Menu;
-      return menu.status === "published" ? menu : null;
-    }
-  }
+  const snap = await adminDb
+    .collection("restaurants")
+    .doc(restaurantId)
+    .collection("menus")
+    .doc(menuId)
+    .get();
+  if (!snap.exists) return null;
 
-  const snapshot = await adminDb.collection("restaurants").doc(restaurantId).collection("menus").where("status", "==", "published").get();
-  const menus = snapshot.docs
-    .map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Menu))
-    .sort((a, b) => {
-      const publishedDiff = timestampToMillis(b.publishedAt) - timestampToMillis(a.publishedAt);
-      return publishedDiff || timestampToMillis(b.updatedAt) - timestampToMillis(a.updatedAt);
-    });
-  return menus[0] || null;
+  const menu = { id: snap.id, ...snap.data() } as Menu;
+  return menu.status === "published" ? menu : null;
 }
 
 export async function GET(request: NextRequest) {
-  const configProblem = getFirebaseAdminConfigProblem();
-  if (configProblem) {
-    return NextResponse.json({ error: configProblem }, { status: 500 });
-  }
-
   try {
     const { searchParams } = new URL(request.url);
-    const slug = searchParams.get("slug") || "";
+    const slug = (searchParams.get("slug") || "").trim().toLowerCase();
     if (!slug) {
-      return NextResponse.json({ error: "Missing restaurant slug." }, { status: 400 });
+      return NextResponse.json({ error: "Missing restaurant slug.", code: "MISSING_SLUG" }, { status: 400 });
+    }
+    if (!/^[a-z0-9-]{1,120}$/.test(slug)) {
+      return NextResponse.json({ error: "Invalid restaurant slug.", code: "INVALID_SLUG" }, { status: 400 });
+    }
+
+    const configProblem = getFirebaseAdminConfigProblem();
+    if (configProblem) {
+      console.error("Public menu Firebase Admin configuration error:", configProblem);
+      return NextResponse.json(
+        { error: "Firebase Admin is not configured.", details: configProblem, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
+        { status: 500 }
+      );
     }
 
     const adminDb = getAdminDb();
     const restaurantSnapshot = await adminDb.collection("restaurants").where("slug", "==", slug).limit(1).get();
     if (restaurantSnapshot.empty) {
-      return NextResponse.json({ error: "Restaurant not found." }, { status: 404 });
+      return NextResponse.json({ error: "Restaurant not found.", code: "RESTAURANT_NOT_FOUND" }, { status: 404 });
     }
 
     const restaurant = {
@@ -81,12 +70,12 @@ export async function GET(request: NextRequest) {
       ...restaurantSnapshot.docs[0].data(),
     } as Restaurant;
     if (restaurant.status !== "published" || !restaurant.currentPublishedMenuId) {
-      return NextResponse.json({ error: "Menu is not published yet.", restaurant }, { status: 409 });
+      return NextResponse.json({ error: "Published menu not found.", code: "MENU_NOT_FOUND" }, { status: 404 });
     }
 
     const menu = await getPublishedMenu(restaurant);
     if (!menu || menu.status !== "published") {
-      return NextResponse.json({ error: "Menu is not published yet.", restaurant }, { status: 409 });
+      return NextResponse.json({ error: "Published menu not found.", code: "MENU_NOT_FOUND" }, { status: 404 });
     }
 
     const [categoriesSnapshot, itemsSnapshot, themesSnapshot] = await Promise.all([
@@ -111,6 +100,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown public menu error.";
     console.error("Public menu API error:", error);
-    return NextResponse.json({ error: `Public menu request failed: ${message}` }, { status: 500 });
+    return NextResponse.json({ error: "Public menu request failed", details: message, code: "PUBLIC_MENU_ERROR" }, { status: 500 });
   }
 }

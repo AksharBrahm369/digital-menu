@@ -5,9 +5,20 @@ import { getAdminAuth, getFirebaseAdminConfigProblem } from "@/lib/firebase-admi
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function isMockSessionAllowed() {
+  return process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_MOCK_DATABASE === "true";
+}
+
+export async function GET() {
+  return NextResponse.json(
+    { error: "Use POST to create or clear an auth session.", code: "METHOD_NOT_ALLOWED" },
+    { status: 405 }
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { token } = await request.json();
+    const { token } = await request.json().catch(() => ({ token: null }));
     const cookieStore = await cookies();
 
     if (!token) {
@@ -19,6 +30,13 @@ export async function POST(request: NextRequest) {
     const isMockToken = typeof token === "string" && token.startsWith("mock_token_");
 
     if (isMockToken) {
+      if (!isMockSessionAllowed()) {
+        return NextResponse.json(
+          { error: "Mock auth sessions are disabled in production.", code: "MOCK_AUTH_DISABLED" },
+          { status: 401 }
+        );
+      }
+
       const mockUid = token.replace("mock_token_", "");
       
       cookieStore.set("session", `mock_session_${mockUid}`, {
@@ -34,7 +52,11 @@ export async function POST(request: NextRequest) {
 
     const configProblem = getFirebaseAdminConfigProblem();
     if (configProblem) {
-      return NextResponse.json({ error: configProblem }, { status: 500 });
+      console.error("Auth session Firebase Admin configuration error:", configProblem);
+      return NextResponse.json(
+        { error: "Firebase Admin is not configured.", details: configProblem, code: "FIREBASE_ADMIN_CONFIG_ERROR" },
+        { status: 500 }
+      );
     }
 
     // Verify the ID token passed from client
@@ -56,6 +78,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "success", uid: decodedToken.uid });
   } catch (error) {
     console.error("Authentication session endpoint error:", error);
-    return NextResponse.json({ error: "Authentication failed" }, { status: 401 });
+    const details = error instanceof Error ? error.message : "Unknown authentication error.";
+    return NextResponse.json({ error: "Authentication failed", details, code: "AUTH_SESSION_FAILED" }, { status: 401 });
   }
 }

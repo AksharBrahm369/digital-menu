@@ -88,11 +88,19 @@ function handleApiError(error: unknown, publicMessage: string) {
 
   if (error instanceof ApiError) {
     console.error(`${publicMessage}:`, { status: error.status, details });
-    return NextResponse.json({ error: publicMessage, details }, { status: error.status });
+    const code =
+      error.status === 401
+        ? "UNAUTHENTICATED"
+        : error.status === 403
+          ? "FORBIDDEN"
+          : error.status === 500 && details.toLowerCase().includes("firebase")
+            ? "FIREBASE_ADMIN_CONFIG_ERROR"
+            : "RESTAURANT_API_ERROR";
+    return NextResponse.json({ error: publicMessage, details, code }, { status: error.status });
   }
 
   console.error("Restaurant API error:", error);
-  return NextResponse.json({ error: publicMessage, details }, { status: 500 });
+  return NextResponse.json({ error: publicMessage, details, code: "RESTAURANT_API_ERROR" }, { status: 500 });
 }
 
 export async function GET(request: NextRequest) {

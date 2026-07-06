@@ -7,10 +7,10 @@ export const dynamic = "force-dynamic";
 
 const MOCK_DB_FILE = path.join(process.cwd(), "mock_db.json");
 const MOCK_DB_PRODUCTION_ERROR =
-  "The local mock database cannot be used on Vercel/production because file writes are not persistent. Configure Firebase environment variables and set NEXT_PUBLIC_MOCK_DATABASE=false.";
+  "The local mock database is disabled outside local development. Configure Firebase environment variables and set NEXT_PUBLIC_MOCK_DATABASE=false in Vercel Production.";
 
 function isMockDatabaseAllowed() {
-  return process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ALLOW_MOCK_DATABASE_IN_PRODUCTION === "true";
+  return process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_MOCK_DATABASE === "true";
 }
 
 // Helper: Read the mock database from local file
@@ -53,7 +53,7 @@ function writeDb(data: any) {
 
 export async function GET(request: NextRequest) {
   if (!isMockDatabaseAllowed()) {
-    return NextResponse.json({ error: MOCK_DB_PRODUCTION_ERROR }, { status: 500 });
+    return NextResponse.json({ error: MOCK_DB_PRODUCTION_ERROR, code: "MOCK_DB_DISABLED" }, { status: 403 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     if (!isMockDatabaseAllowed()) {
-      return NextResponse.json({ error: MOCK_DB_PRODUCTION_ERROR }, { status: 500 });
+      return NextResponse.json({ error: MOCK_DB_PRODUCTION_ERROR, code: "MOCK_DB_DISABLED" }, { status: 403 });
     }
 
     const body = await request.json();
