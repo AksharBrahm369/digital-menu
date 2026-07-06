@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase/admin";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function present(value?: string) {
@@ -9,12 +10,17 @@ function present(value?: string) {
 
 export async function GET() {
   const configProblem = getFirebaseAdminConfigProblem();
+  const hasServiceAccountJson =
+    present(process.env.FIREBASE_SERVICE_ACCOUNT_KEY) ||
+    present(process.env.FIREBASE_SERVICE_ACCOUNT_JSON) ||
+    present(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
   const checks = {
     publicProjectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
     adminProjectId: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
     hasPublicApiKey: present(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
-    hasClientEmail: present(process.env.FIREBASE_CLIENT_EMAIL),
-    hasPrivateKey: present(process.env.FIREBASE_PRIVATE_KEY) || present(process.env.FIREBASE_SERVICE_ACCOUNT_KEY) || present(process.env.FIREBASE_SERVICE_ACCOUNT_JSON),
+    hasClientEmail: present(process.env.FIREBASE_CLIENT_EMAIL) || hasServiceAccountJson,
+    hasPrivateKey: present(process.env.FIREBASE_PRIVATE_KEY) || hasServiceAccountJson,
+    hasServiceAccountJson,
     mockDatabase: process.env.NEXT_PUBLIC_MOCK_DATABASE || "",
   };
 

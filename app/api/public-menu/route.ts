@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase/admin";
 import type { Menu, Restaurant } from "@/lib/firebase/db";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function timestampToMillis(value: any) {

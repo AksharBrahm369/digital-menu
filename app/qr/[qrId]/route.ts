@@ -4,6 +4,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
 import path from "path";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const MOCK_DB_FILE = path.join(process.cwd(), "mock_db.json");
 
 function isMockDatabaseAllowed() {

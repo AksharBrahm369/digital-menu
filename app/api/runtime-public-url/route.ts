@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const RUNTIME_PUBLIC_URL_FILE = ".qr-public-url";

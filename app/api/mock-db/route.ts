@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const MOCK_DB_FILE = path.join(process.cwd(), "mock_db.json");
 const MOCK_DB_PRODUCTION_ERROR =
   "The local mock database cannot be used on Vercel/production because file writes are not persistent. Configure Firebase environment variables and set NEXT_PUBLIC_MOCK_DATABASE=false.";

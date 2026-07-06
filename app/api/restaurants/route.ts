@@ -3,6 +3,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb, getFirebaseAdminConfigProblem } from "@/lib/firebase/admin";
 import type { Restaurant } from "@/lib/firebase/db";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 class ApiError extends Error {
   status: number;
 
