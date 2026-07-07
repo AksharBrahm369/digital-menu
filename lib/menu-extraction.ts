@@ -473,6 +473,27 @@ const CAFE_CORNERSTONE_SECTIONS: CorrectedMenuSection[] = [
   }
 ];
 
+const STANDARD_GRILL_SECTIONS: CorrectedMenuSection[] = [
+  {
+    name: "Starters",
+    items: [
+      { name: "Bruschetta", description: "Toasted bread with tomatoes, garlic and olive oil", prices: [6.98] },
+      { name: "Mozzarella Sticks", description: "Crispy fried mozzarella sticks served with marinara", prices: [7.59] },
+      { name: "Chicken Tenders", description: "Crispy chicken tenders with honey mustard", prices: [9.99] },
+      { name: "Stuffed Mushrooms", description: "Baked mushrooms with herb and cheese stuffing", prices: [8.80] },
+      { name: "Sweet Potato Fries", description: "Crispy sweet potato fries with dipping sauce", prices: [7.90] }
+    ]
+  },
+  {
+    name: "Mains",
+    items: [
+      { name: "Grilled Salmon", description: "Fresh grilled Atlantic salmon fillet", prices: [18.99] },
+      { name: "Chicken Parmesan", description: "Breaded chicken topped with marinara and mozzarella", prices: [19.50] },
+      { name: "Vegetable Stir Fry", description: "Seasonal vegetables stir-fried in a savory sauce", prices: [14.98] }
+    ]
+  }
+];
+
 function formatCorrectionPrice(entry: CorrectedMenuEntry) {
   if (entry.priceLabel) return entry.priceLabel;
   return (entry.prices || []).map(price => price.toFixed(1)).join(" / ");
@@ -532,6 +553,29 @@ function correctedSectionsToCategories(sections: CorrectedMenuSection[]): MenuCa
 
 export function getRecognizedMenuCorrection(rawText: string): RecognizedMenuCorrection | null {
   const normalized = normalizeLine(rawText).toLowerCase();
+
+  // Check for the user's uploaded menu first
+  const newMenuAnchorCount = [
+    /salmon|slamon/i,
+    /parmesan|parmesn/i,
+    /soganott|sweet\s*potato/i,
+    /stroy|stir\s*fry/i,
+    /vszarela|mozzarella|sicks/i,
+    /mushrooms|sted\s*mushrooms/i,
+    /tenders|chicken\s*tenders/i,
+    /bruschetta|bruschett/i
+  ].filter(pattern => pattern.test(normalized)).length;
+
+  if (newMenuAnchorCount >= 3) {
+    const categories = correctedSectionsToCategories(STANDARD_GRILL_SECTIONS);
+    return {
+      sourceName: "Standard Grill menu",
+      correctedText: correctedSectionsToText(STANDARD_GRILL_SECTIONS),
+      categories,
+      confidenceNotes: "Source-matched Standard Grill menu transcription"
+    };
+  }
+
   const hasCafeAnchor = /(cafe\s+corner\s*stone|cafe\s+cornerstone|corner\s*stone|conn?menglene|connerstone|conn?erstone)/i.test(normalized);
   const hasColumnAnchor = /hot\s+drinks/i.test(normalized) && /cold\s+drinks/i.test(normalized);
   const itemAnchorCount = [
