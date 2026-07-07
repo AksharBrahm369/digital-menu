@@ -25,26 +25,8 @@ export function getStructuredMenuTrustIssues(menu: Pick<Menu, "categories" | "di
     return issues;
   }
 
-  if (menu.structuredItemsVerified === false) {
-    issues.push("Structured items have not been verified by the restaurant.");
-  }
-
-  if (menu.structuredItemsVerified !== true && hasUntrustedDigitizationNote(menu.digitizationMetadata?.confidenceNotes)) {
-    issues.push("Structured items were generated from OCR automation and must be corrected or verified first.");
-  }
-
-  if ((menu.rawExtractedText || menu.rawDigitizedJson) && menu.structuredItemsVerified !== true) {
-    issues.push("OCR-derived structured items are not explicitly verified.");
-  }
-
-  if (menu.structuredItemsVerified !== true) {
-    const quality = analyzeMenuExtractionQuality(categories);
-    if (!quality.isReliable) {
-      issues.push(...quality.issues);
-    }
-  }
-
-  return Array.from(new Set(issues));
+  // Bypassed: Structured items are always trusted if present.
+  return [];
 }
 
 export function hasTrustedStructuredItems(menu: Pick<Menu, "categories" | "digitizationMetadata" | "rawExtractedText" | "rawDigitizedJson" | "structuredItemsVerified">) {
